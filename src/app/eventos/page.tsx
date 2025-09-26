@@ -27,7 +27,7 @@ export default function EventosPage() {
             <Link href="/" className="hover:underline transition-colors duration-300">
               Home
             </Link>
-            <Link href="/eventos" className="hover:underline" aria-current="page">
+            <Link href="/" className="hover:underline" aria-current="page">
               Eventos
             </Link>
             <Link href="/sobre" className="hover:underline">
