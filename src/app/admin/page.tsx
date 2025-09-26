@@ -5,15 +5,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/firebase'
-import {
-  collection,
-  getDocs,
-  deleteDoc,
-  doc,
-} from 'firebase/firestore'
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore'
 import AddVeiculoForm from '@/components/AddVeiculoForm'
 import EditVeiculoForm from '@/components/EditVeiculoForm'
 import { jwtVerify } from 'jose'
+import Image from 'next/image'
 
 export type Veiculo = {
   id: string
@@ -47,67 +43,93 @@ export default function AdminPage() {
 
   useEffect(() => {
     const verifyAndFetch = async () => {
-      const token = localStorage.getItem('token')
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       if (!token) {
         router.push('/login')
         return
       }
 
       try {
-        const secret = new TextEncoder().encode(process.env.NEXT_PUBLIC_JWT_SECRET || 'supersegredoseguroseguroseguro')
+        const secret = new TextEncoder().encode(
+          process.env.NEXT_PUBLIC_JWT_SECRET || 'supersegredoseguroseguroseguro'
+        )
         await jwtVerify(token, secret)
         setTokenVerified(true)
-        fetchVeiculos()
-        fetchAdmins()
-      } catch (err) {
+        await Promise.all([fetchVeiculos(), fetchAdmins()])
+
+      } catch (error) {
+        console.error('Falha ao carregar/admin:', error);
         router.push('/login')
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     verifyAndFetch()
   }, [router])
 
   const fetchVeiculos = async () => {
-    const querySnapshot = await getDocs(collection(db, 'vehicles'))
-    const data: Veiculo[] = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<Veiculo, 'id'>),
-    }))
-    setVeiculos(data)
+    try {
+      const querySnapshot = await getDocs(collection(db, 'vehicles'))
+      const data: Veiculo[] = querySnapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Veiculo, 'id'>),
+      }))
+      setVeiculos(data)
+    } catch (err) {
+      console.error('Erro ao obter veículos:', err)
+    }
   }
 
   const fetchAdmins = async () => {
-    const querySnapshot = await getDocs(collection(db, 'admins'))
-    const data: Admin[] = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<Admin, 'id'>),
-    }))
-    setAdmins(data)
+    try {
+      const querySnapshot = await getDocs(collection(db, 'admins'))
+      const data: Admin[] = querySnapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Admin, 'id'>),
+      }))
+      setAdmins(data)
+    } catch (err) {
+      console.error('Erro ao obter administradores:', err)
+    }
   }
 
   const handleDeleteSelectedVeiculos = async () => {
     if (!window.confirm('Tens a certeza que queres eliminar os veículos selecionados?')) return
 
-    for (const id of selectedVeiculos) {
-      const veiculo = veiculos.find(v => v.id === id)
+    try {
+      for (const id of selectedVeiculos) {
+        const veiculo = veiculos.find((v) => v.id === id)
 
-      if (veiculo?.image_public_id) {
-        await fetch('/api/delete-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ public_id: veiculo.image_public_id }),
-        })
+        if (veiculo?.image_public_id) {
+          try {
+            await fetch('/api/delete-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ public_id: veiculo.image_public_id }),
+            })
+          } catch (err) {
+            console.error('Erro ao apagar imagem no Cloudinary:', err)
+          }
+        }
+
+        // apagar o documento do Firestore
+        // eslint-disable-next-line no-await-in-loop
+        await deleteDoc(doc(db, 'vehicles', id))
       }
 
-      await deleteDoc(doc(db, 'vehicles', id))
+      setSelectedVeiculos([])
+      await fetchVeiculos()
+    } catch (err) {
+      console.error('Erro ao eliminar veículos selecionados:', err)
     }
-
-    setSelectedVeiculos([])
-    fetchVeiculos()
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
+    try {
+      localStorage.removeItem('token')
+    } catch {
+      // ignore
+    }
     router.push('/')
   }
 
@@ -133,13 +155,19 @@ export default function AdminPage() {
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button
             onClick={() => setActiveTab('veiculos')}
-            className={`w-full sm:w-auto px-4 py-2 rounded-md transition font-medium ${activeTab === 'veiculos' ? 'bg-[#002447] text-white shadow' : 'bg-white border border-gray-300 text-black'}`}
+            className={`w-full sm:w-auto px-4 py-2 rounded-md transition font-medium ${activeTab === 'veiculos'
+                ? 'bg-[#002447] text-white shadow'
+                : 'bg-white border border-gray-300 text-black'
+              }`}
           >
             Veículos
           </button>
           <button
             onClick={() => setActiveTab('admins')}
-            className={`w-full sm:w-auto px-4 py-2 rounded-md transition font-medium ${activeTab === 'admins' ? 'bg-[#002447] text-white shadow' : 'bg-white border border-gray-300 text-black'}`}
+            className={`w-full sm:w-auto px-4 py-2 rounded-md transition font-medium ${activeTab === 'admins'
+                ? 'bg-[#002447] text-white shadow'
+                : 'bg-white border border-gray-300 text-black'
+              }`}
           >
             Administradores
           </button>
@@ -181,7 +209,15 @@ export default function AdminPage() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-[#e5e7eb] text-[#002447] text-sm uppercase font-semibold">
                     <tr>
-                      <th className="p-2 sm:p-4 text-center border-b"><input type="checkbox" checked={selectedVeiculos.length === veiculos.length && veiculos.length > 0} onChange={(e) => setSelectedVeiculos(e.target.checked ? veiculos.map((v) => v.id) : [])} /></th>
+                      <th className="p-2 sm:p-4 text-center border-b">
+                        <input
+                          type="checkbox"
+                          checked={selectedVeiculos.length === veiculos.length && veiculos.length > 0}
+                          onChange={(e) =>
+                            setSelectedVeiculos(e.target.checked ? veiculos.map((v) => v.id) : [])
+                          }
+                        />
+                      </th>
                       <th className="p-2 sm:p-4 text-center border-b">Marca</th>
                       <th className="p-2 sm:p-4 text-center border-b">Modelo</th>
                       <th className="p-2 sm:p-4 text-center border-b">Categoria</th>
@@ -196,17 +232,51 @@ export default function AdminPage() {
                   </thead>
                   <tbody>
                     {filteredVeiculos.map((v) => (
-                      <tr key={v.id} className="hover:bg-[#f9fafb] transition text-center text-sm text-gray-800">
-                        <td className="p-2 sm:p-4 border-b"><input type="checkbox" checked={selectedVeiculos.includes(v.id)} onChange={(e) => e.target.checked ? setSelectedVeiculos(prev => [...prev, v.id]) : setSelectedVeiculos(prev => prev.filter(id => id !== v.id))} /></td>
+                      <tr
+                        key={v.id}
+                        className="hover:bg-[#f9fafb] transition text-center text-sm text-gray-800"
+                      >
+                        <td className="p-2 sm:p-4 border-b">
+                          <input
+                            type="checkbox"
+                            checked={selectedVeiculos.includes(v.id)}
+                            onChange={(e) =>
+                              e.target.checked
+                                ? setSelectedVeiculos((prev) => [...prev, v.id])
+                                : setSelectedVeiculos((prev) => prev.filter((id) => id !== v.id))
+                            }
+                          />
+                        </td>
                         <td className="p-2 sm:p-4 border-b">{v.brand}</td>
                         <td className="p-2 sm:p-4 border-b">{v.model}</td>
                         <td className="p-2 sm:p-4 border-b">{v.category}</td>
                         <td className="p-2 sm:p-4 border-b">{v.price} $</td>
                         <td className="p-2 sm:p-4 border-b">{v.speed_original} km/h</td>
                         <td className="p-2 sm:p-4 border-b">{v.speed_tuned} km/h</td>
-                        <td className="p-2 sm:p-4 border-b"><span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${v.stock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{v.stock ? 'Sim' : 'Não'}</span></td>
+                        <td className="p-2 sm:p-4 border-b">
+                          <span
+                            className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${v.stock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}
+                          >
+                            {v.stock ? 'Sim' : 'Não'}
+                          </span>
+                        </td>
                         <td className="p-2 sm:p-4 border-b">{v.trunk_capacity} L</td>
-                        <td className="p-2 sm:p-4 border-b">{v.image_url ? <img src={v.image_url} alt={v.model} className="w-16 h-10 object-cover rounded shadow" /> : '—'}</td>
+                        <td className="p-2 sm:p-4 border-b">
+                          {v.image_url ? (
+                            <div className="w-16 h-10 relative">
+                              <Image
+                                src={v.image_url}
+                                alt={v.model}
+                                fill
+                                className="object-cover rounded shadow"
+                                sizes="64px"
+                              />
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="p-2 sm:p-4 border-b">
                           <button
                             onClick={() => setEditVeiculo(v)}
@@ -225,7 +295,14 @@ export default function AdminPage() {
                 <AddVeiculoForm onClose={() => setShowAddVeiculo(false)} onSuccess={fetchVeiculos} />
               )}
               {editVeiculo && (
-                <EditVeiculoForm veiculo={editVeiculo} onClose={() => setEditVeiculo(null)} onSuccess={() => { fetchVeiculos(); setEditVeiculo(null) }} />
+                <EditVeiculoForm
+                  veiculo={editVeiculo}
+                  onClose={() => setEditVeiculo(null)}
+                  onSuccess={async () => {
+                    await fetchVeiculos()
+                    setEditVeiculo(null)
+                  }}
+                />
               )}
             </>
           )}

@@ -1,16 +1,62 @@
-import 'server-only'
-import { cert, getApps, initializeApp } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+// src/lib/firebaseAdmin.ts
+import admin from 'firebase-admin'
 
-const apps = getApps()
-export const adminApp = apps.length
-  ? apps[0]
-  : initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID!,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+let app: admin.app.App
+
+function getAdminApp() {
+  if (admin.apps.length) return admin.app()
+
+  const projectId = process.env.FIREBASE_PROJECT_ID
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY
+
+  // Alternativa: private key em Base64 (se preferires usar FIREBASE_PRIVATE_KEY_BASE64)
+  if (!privateKey && process.env.FIREBASE_PRIVATE_KEY_BASE64) {
+    try {
+      privateKey = Buffer.from(
+        process.env.FIREBASE_PRIVATE_KEY_BASE64,
+        'base64'
+      ).toString('utf8')
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Alternativa menos comum: colaste o JSON inteiro da service account numa só variável
+  if (privateKey && privateKey.trim().startsWith('{')) {
+    const serviceAccount = JSON.parse(privateKey)
+    return admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    })
+  }
+
+  // Caso padrão: 3 variáveis separadas
+  if (projectId && clientEmail && privateKey) {
+    // Se veio numa linha com \n, normaliza
+    if (privateKey.includes('\\n')) {
+      privateKey = privateKey.replace(/\\n/g, '\n')
+    }
+    return admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey,
       }),
     })
+  }
 
-export const adminDb = getFirestore(adminApp)
+  // Último recurso: GOOGLE_APPLICATION_CREDENTIALS (ficheiro JSON no disco)
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    return admin.initializeApp()
+  }
+
+  throw new Error(
+    'Firebase Admin: credenciais em falta. Define FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY (ou *_BASE64 / GOOGLE_APPLICATION_CREDENTIALS).'
+  )
+}
+
+app = getAdminApp()
+
+export const adminDb = admin.firestore()
+export const adminAuth = admin.auth()
+export default app

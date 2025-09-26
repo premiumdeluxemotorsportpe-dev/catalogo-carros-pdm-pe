@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import type React from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { Veiculo } from '@/app/admin/page'
 import { motion, AnimatePresence } from 'framer-motion'
+import Image from 'next/image'
 
 interface Props {
   veiculo: Veiculo
@@ -12,67 +14,104 @@ interface Props {
   onSuccess: () => void
 }
 
+/**
+ * Mantemos os números como number (UI aceita value=number em <input type="number" />)
+ * e o URL da imagem como string opcional.
+ */
+type VeiculoEditable = Veiculo & {
+  image_url?: string
+}
+
+const textFields = ['brand', 'model', 'category'] as const
+type TextField = typeof textFields[number]
+
+const numericFields = ['price', 'speed_original', 'speed_tuned', 'trunk_capacity'] as const
+type NumericField = typeof numericFields[number]
+
 export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) {
-  const [formData, setFormData] = useState<Veiculo>(veiculo)
+  const [formData, setFormData] = useState<VeiculoEditable>(veiculo)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showPreview, setShowPreview] = useState(true)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target
-    const val =
-      type === 'checkbox'
-        ? checked
-        : type === 'number'
-        ? (value === '' ? '' : parseFloat(value))
-        : value
+  // Handlers tipados por campo para evitar `any` e `as never`
+  const handleTextChange =
+    (field: TextField) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }))
+    }
 
-    setFormData((prev) => ({ ...prev, [name]: val as any }))
+  const handleNumberChange =
+    (field: NumericField) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { value } = e.target
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value === '' ? ('' as unknown as number) : Number(value),
+      }))
+    }
+
+  const handleStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, stock: e.target.checked }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleImageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowPreview(true)
+    setFormData((prev) => ({ ...prev, image_url: e.target.value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      // validação simples do URL (se preenchido)
-      const url = (formData as any).image_url ? String((formData as any).image_url).trim() : ''
+      const url = (formData.image_url ?? '').trim()
       if (url && !/^https?:\/\/.+/i.test(url)) {
         setError('Coloca um URL válido (http:// ou https://).')
         setLoading(false)
         return
       }
 
-      const updatedData: Partial<Veiculo> = {
+      const updatedData: Partial<VeiculoEditable> = {
         brand: formData.brand,
         model: formData.model,
         category: formData.category,
         price: Number(formData.price),
         speed_original: Number(formData.speed_original),
-        speed_tuned: Number(formData.speed_tuned),
-        trunk_capacity: Number(formData.trunk_capacity),
+        speed_tuned:
+          formData.speed_tuned === ('' as unknown as number)
+            ? undefined
+            : Number(formData.speed_tuned),
+        trunk_capacity:
+          formData.trunk_capacity === ('' as unknown as number)
+            ? undefined
+            : Number(formData.trunk_capacity),
         stock: Boolean(formData.stock),
-        image_url: url,            // guarda o URL diretamente
-        // image_public_id: ''      // remove se não usares este campo na coleção
+        image_url: url || '',
       }
 
-      // remove undefined / NaN
-      const cleanedData = Object.fromEntries(
-        Object.entries(updatedData).filter(
-          ([_, value]) => value !== undefined && value !== null && value !== (Number as any).NaN
-        )
-      )
+      // remove undefined, null e NaN
+      const cleanedEntries = Object.entries(updatedData).filter(([_, v]) => {
+        if (v === undefined || v === null) return false
+        if (typeof v === 'number' && Number.isNaN(v)) return false
+        return true
+      })
+      const cleanedData = Object.fromEntries(cleanedEntries)
 
       await updateDoc(doc(db, 'vehicles', veiculo.id), cleanedData)
       onSuccess()
       onClose()
-    } catch (err) {
-      console.error('Erro ao atualizar veículo:', err)
+    } catch (error) {
+      console.error('Erro ao atualizar veículo:', error)
       setError('Erro ao atualizar veículo. Verifica os dados e tenta novamente.')
     } finally {
       setLoading(false)
     }
   }
+
+  const imageUrl = (formData.image_url ?? '').trim()
+  const validPreview = showPreview && !!imageUrl && /^https?:\/\/.+/i.test(imageUrl)
 
   return (
     <AnimatePresence>
@@ -92,7 +131,7 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
           <h2 className="text-3xl font-bold mb-6 text-[#002447]">Editar Veículo</h2>
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {['brand', 'model', 'category'].map((field) => (
+            {textFields.map((field) => (
               <div key={field} className="flex flex-col">
                 <label htmlFor={field} className="text-sm font-semibold mb-1 text-gray-700">
                   {field === 'brand' ? 'Marca' : field === 'model' ? 'Modelo' : 'Categoria'}
@@ -101,15 +140,15 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                   id={field}
                   type="text"
                   name={field}
-                  value={formData[field as keyof Veiculo] as string}
-                  onChange={handleChange}
+                  value={formData[field] as string}
+                  onChange={handleTextChange(field)}
                   className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   required
                 />
               </div>
             ))}
 
-            {['price', 'speed_original', 'speed_tuned', 'trunk_capacity'].map((field) => (
+            {numericFields.map((field) => (
               <div key={field} className="flex flex-col">
                 <label htmlFor={field} className="text-sm font-semibold mb-1 text-gray-700">
                   {field === 'price'
@@ -124,22 +163,24 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                   id={field}
                   type="number"
                   name={field}
-                  value={formData[field as keyof Veiculo] as number}
-                  onChange={handleChange}
+                  value={formData[field] as number}
+                  onChange={handleNumberChange(field)}
                   className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  required
+                  required={field !== 'speed_tuned' && field !== 'trunk_capacity'}
                 />
               </div>
             ))}
 
             <div className="md:col-span-2 flex items-center gap-3 mt-2">
-              <label htmlFor="stock" className="text-sm font-semibold text-gray-700">Disponível em stock:</label>
+              <label htmlFor="stock" className="text-sm font-semibold text-gray-700">
+                Disponível em stock:
+              </label>
               <input
                 id="stock"
                 type="checkbox"
                 name="stock"
                 checked={Boolean(formData.stock)}
-                onChange={handleChange}
+                onChange={handleStockChange}
                 className="w-5 h-5"
               />
             </div>
@@ -154,21 +195,23 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                 type="url"
                 name="image_url"
                 placeholder="https://exemplo.com/imagem.webp"
-                value={(formData as any).image_url || ''}
-                onChange={handleChange}
+                value={formData.image_url ?? ''}
+                onChange={handleImageUrlChange}
                 className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
-              {(formData as any).image_url &&
-                /^https?:\/\/.+/i.test(String((formData as any).image_url).trim()) && (
-                  <div className="mt-2">
-                    <img
-                      src={String((formData as any).image_url).trim()}
-                      alt="Pré-visualização"
-                      className="w-full h-48 object-cover rounded-md border"
-                      onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
-                    />
-                  </div>
-                )}
+
+              {validPreview && (
+                <div className="mt-2 w-full h-48 relative">
+                  <Image
+                    src={imageUrl}
+                    alt="Pré-visualização"
+                    fill
+                    className="object-cover rounded-md border"
+                    sizes="100%"
+                    onError={() => setShowPreview(false)}
+                  />
+                </div>
+              )}
             </div>
 
             {error && (

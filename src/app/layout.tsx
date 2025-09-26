@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Premium Deluxe Motorsport',
   description: 'Administração de veículos no universo GTA',
+  icons: {
+    icon: '/logo.webp',       // usa o ficheiro do teu logotipo na pasta /public
+    shortcut: '/logo.webp',
+    apple: '/logo.webp',
+  },
 }
 
 export default function RootLayout({
