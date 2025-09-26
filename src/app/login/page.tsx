@@ -1,33 +1,40 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function LoginPage() {
-  const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const router = useRouter()
   const sp = useSearchParams()
   const nextPath = sp.get('next') || '/admin'
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const [name, setName] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     setLoading(true)
+
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, password }),
       })
+
+      // Só tenta ler JSON se o servidor mandou JSON
       const ct = res.headers.get('content-type') ?? ''
       const data = ct.includes('application/json') ? await res.json() : {}
+
       if (!res.ok) {
-        setError(data?.message || `Erro (HTTP ${res.status})`)
+        setError((data as any)?.message || `Erro (HTTP ${res.status})`)
         return
       }
+
+      // Sessão é por cookie HttpOnly -> redireciona
       router.replace(nextPath)
     } catch {
       setError('Falha de rede.')
@@ -37,21 +44,55 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-md bg-white border rounded-2xl p-8 shadow">
-        <h1 className="text-2xl font-bold mb-4">Login de Admin</h1>
-        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 text-black px-4">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm bg-white p-6 md:p-7 rounded-2xl shadow border"
+      >
+        <h2 className="text-2xl font-semibold mb-4 text-[#002447]">
+          Login de Admin
+        </h2>
 
-        <label className="block text-sm mb-1">Nome</label>
-        <input className="w-full border rounded px-3 py-2 mb-4" value={name} onChange={e=>setName(e.target.value)} required />
+        {error && (
+          <p className="text-red-600 text-sm mb-3" role="alert">
+            {error}
+          </p>
+        )}
 
-        <label className="block text-sm mb-1">Senha</label>
-        <input type="password" className="w-full border rounded px-3 py-2 mb-6" value={password} onChange={e=>setPassword(e.target.value)} required />
+        <label htmlFor="name" className="block text-sm mb-1">
+          Nome
+        </label>
+        <input
+          id="name"
+          type="text"
+          className="w-full px-3 py-2 border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="username"
+          required
+        />
 
-        <button disabled={loading} className="w-full bg-[#002447] text-white rounded py-2 disabled:opacity-60">
+        <label htmlFor="password" className="block text-sm mb-1">
+          Senha
+        </label>
+        <input
+          id="password"
+          type="password"
+          className="w-full px-3 py-2 border rounded mb-6 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          required
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-[#002447] text-white py-2 rounded hover:bg-[#003366] disabled:opacity-60 transition"
+        >
           {loading ? 'A entrar…' : 'Entrar'}
         </button>
       </form>
-    </main>
+    </div>
   )
 }
