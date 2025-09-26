@@ -1,28 +1,74 @@
+// src/app/api/admin/vehicles/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/firebaseAdmin'
+import { FieldPath } from 'firebase-admin/firestore'
 import { jwtVerify } from 'jose'
+import { z } from 'zod'
 
 export const runtime = 'nodejs'
-// Isto evita tentativas de pre-render/prefetch que puxem o módulo no build.
 export const dynamic = 'force-dynamic'
 
+// ---------- Auth ----------
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me')
 
-async function isAdmin(req: NextRequest) {
-  const t = req.cookies.get('session')?.value
-  if (!t) return false
+async function isAdmin(req: NextRequest): Promise<boolean> {
+  const token = req.cookies.get('session')?.value
+  if (!token) return false
   try {
-    const { payload } = await jwtVerify(t, secret)
+    const { payload } = await jwtVerify(token, secret)
     return payload.admin === true
   } catch {
     return false
   }
 }
 
-function badRequest(msg: string) {
-  return NextResponse.json({ message: msg }, { status: 400 })
+// ---------- Types ----------
+export type Veiculo = {
+  id: string
+  brand: string
+  category: string
+  model: string
+  price: number
+  speed_original: number
+  speed_tuned?: number
+  trunk_capacity?: number
+  stock: boolean
+  image_url?: string
+  image_public_id?: string
+  published: boolean
 }
 
+// ---------- Validation ----------
+const createSchema = z.object({
+  brand: z.string().min(1),
+  category: z.string().min(1),
+  model: z.string().min(1),
+  price: z.coerce.number().nonnegative(),
+  speed_original: z.coerce.number().nonnegative(),
+  speed_tuned: z.coerce.number().nonnegative().optional(),
+  trunk_capacity: z.coerce.number().nonnegative().optional(),
+  stock: z.boolean().default(false),
+  image_url: z.string().url().optional(),
+  image_public_id: z.string().optional(),
+  published: z.boolean().default(true),
+})
+
+const updateSchema = z.object({
+  id: z.string().min(1),
+  brand: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  price: z.coerce.number().nonnegative().optional(),
+  speed_original: z.coerce.number().nonnegative().optional(),
+  speed_tuned: z.coerce.number().nonnegative().optional(),
+  trunk_capacity: z.coerce.number().nonnegative().optional(),
+  stock: z.boolean().optional(),
+  image_url: z.string().url().optional().or(z.literal('')),
+  image_public_id: z.string().optional(),
+  published: z.boolean().optional(),
+})
+
+// ---------- GET (list + paginação por id) ----------
 export async function GET(req: NextRequest) {
   if (!(await isAdmin(req))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
@@ -31,134 +77,136 @@ export async function GET(req: NextRequest) {
   try {
     const db = getAdminDb()
     const { searchParams } = new URL(req.url)
-    const pageSize = Math.min(Math.max(Number(searchParams.get('pageSize') || '50'), 1), 200)
+    const pageSize = Math.min(Number(searchParams.get('pageSize') || 24), 200)
     const cursor = searchParams.get('cursor')
 
-    let q: FirebaseFirestore.Query = db.collection('vehicles').orderBy('brand').limit(pageSize)
+    let q = db
+      .collection('vehicles')
+      .orderBy(FieldPath.documentId())
+      .limit(pageSize + 1) // +1 para saber se há próxima página
+
     if (cursor) {
-      const cursorDoc = await db.collection('vehicles').doc(cursor).get()
-      if (cursorDoc.exists) {
-        q = q.startAfter(cursorDoc)
+      const curSnap = await db.collection('vehicles').doc(cursor).get()
+      if (curSnap.exists) {
+        q = q.startAfter(curSnap.ref)
       }
     }
 
     const snap = await q.get()
-    const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
-    const nextCursor = snap.size === pageSize ? snap.docs[snap.docs.length - 1].id : null
+    const docs = snap.docs
+    const items = docs.slice(0, pageSize).map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        brand: String(data.brand ?? ''),
+        category: String(data.category ?? ''),
+        model: String(data.model ?? ''),
+        price: Number(data.price ?? 0),
+        speed_original: Number(data.speed_original ?? 0),
+        speed_tuned: data.speed_tuned !== undefined ? Number(data.speed_tuned) : undefined,
+        trunk_capacity: data.trunk_capacity !== undefined ? Number(data.trunk_capacity) : undefined,
+        stock: Boolean(data.stock),
+        image_url: data.image_url ? String(data.image_url) : undefined,
+        image_public_id: data.image_public_id ? String(data.image_public_id) : undefined,
+        published: Boolean(data.published),
+      } as Veiculo
+    })
+
+    const hasMore = docs.length > pageSize
+    const nextCursor = hasMore ? docs[pageSize].id : null
 
     return NextResponse.json({ items, nextCursor })
   } catch (e) {
-    // Quando os envs não estão definidos em runtime, aqui é que lançará — não no build.
     const msg =
       e instanceof Error && e.message === 'FIREBASE_ADMIN_MISSING_CREDS'
-        ? 'Credenciais Firebase Admin em falta. Define FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY (ou *_BASE64).'
-        : 'Erro ao listar veículos.'
+        ? 'Credenciais Firebase Admin em falta.'
+        : 'Erro a obter veículos.'
+    console.error('GET /api/admin/vehicles:', e)
     return NextResponse.json({ message: msg }, { status: 500 })
   }
 }
 
+// ---------- POST (create) ----------
 export async function POST(req: NextRequest) {
   if (!(await isAdmin(req))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
   try {
+    const parsed = createSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ message: 'Dados inválidos', issues: parsed.error.issues }, { status: 400 })
+    }
+
     const db = getAdminDb()
-    const body = (await req.json()) as Record<string, unknown>
-
-    const data = {
-      brand: String(body.brand ?? ''),
-      category: String(body.category ?? ''),
-      model: String(body.model ?? ''),
-      price: Number(body.price ?? 0),
-      speed_original: body.speed_original !== undefined ? Number(body.speed_original) : undefined,
-      speed_tuned: body.speed_tuned !== undefined ? Number(body.speed_tuned) : undefined,
-      trunk_capacity: body.trunk_capacity !== undefined ? Number(body.trunk_capacity) : undefined,
-      stock: Boolean(body.stock),
-      image_url: String(body.image_url ?? ''),
-      image_public_id: body.image_public_id ? String(body.image_public_id) : undefined,
-      published: body.published !== undefined ? Boolean(body.published) : true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }
-
-    // Limpa undefined/NaN
-    const cleaned = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => !(v === undefined || (typeof v === 'number' && Number.isNaN(v))))
-    )
-
-    if (!cleaned.brand || !cleaned.model || !cleaned.category) {
-      return badRequest('Campos obrigatórios: brand, model, category')
-    }
-
-    const ref = await db.collection('vehicles').add(cleaned)
-    return NextResponse.json({ ok: true, id: ref.id })
+    const toSave = parsed.data
+    const ref = await db.collection('vehicles').add(toSave)
+    return NextResponse.json({ id: ref.id })
   } catch (e) {
     const msg =
       e instanceof Error && e.message === 'FIREBASE_ADMIN_MISSING_CREDS'
         ? 'Credenciais Firebase Admin em falta.'
-        : 'Erro ao criar veículo.'
+        : 'Erro a criar veículo.'
+    console.error('POST /api/admin/vehicles:', e)
     return NextResponse.json({ message: msg }, { status: 500 })
   }
 }
 
+// ---------- PATCH (update) ----------
 export async function PATCH(req: NextRequest) {
   if (!(await isAdmin(req))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    const db = getAdminDb()
-    const body = (await req.json()) as Record<string, unknown>
-    const id = String(body.id ?? '')
-    if (!id) return badRequest('Falta o id')
-
-    const update = {
-      brand: body.brand !== undefined ? String(body.brand) : undefined,
-      category: body.category !== undefined ? String(body.category) : undefined,
-      model: body.model !== undefined ? String(body.model) : undefined,
-      price: body.price !== undefined ? Number(body.price) : undefined,
-      speed_original: body.speed_original !== undefined ? Number(body.speed_original) : undefined,
-      speed_tuned: body.speed_tuned !== undefined ? Number(body.speed_tuned) : undefined,
-      trunk_capacity: body.trunk_capacity !== undefined ? Number(body.trunk_capacity) : undefined,
-      stock: body.stock !== undefined ? Boolean(body.stock) : undefined,
-      image_url: body.image_url !== undefined ? String(body.image_url) : undefined,
-      image_public_id: body.image_public_id !== undefined ? String(body.image_public_id) : undefined,
-      published: body.published !== undefined ? Boolean(body.published) : undefined,
-      updatedAt: Date.now(),
+    const parsed = updateSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ message: 'Dados inválidos', issues: parsed.error.issues }, { status: 400 })
     }
 
-    const cleaned = Object.fromEntries(
-      Object.entries(update).filter(([_, v]) => !(v === undefined || (typeof v === 'number' && Number.isNaN(v))))
-    )
+    const { id, ...rest } = parsed.data
+    const update: Record<string, unknown> = {}
 
-    await db.collection('vehicles').doc(id).set(cleaned, { merge: true })
+    // copia apenas campos definidos (evitar apagar com undefined)
+    Object.entries(rest).forEach(([k, v]) => {
+      if (v !== undefined) update[k] = v
+    })
+
+    const db = getAdminDb()
+    await db.collection('vehicles').doc(id).set(update, { merge: true })
     return NextResponse.json({ ok: true })
   } catch (e) {
     const msg =
       e instanceof Error && e.message === 'FIREBASE_ADMIN_MISSING_CREDS'
         ? 'Credenciais Firebase Admin em falta.'
-        : 'Erro ao atualizar veículo.'
+        : 'Erro a atualizar veículo.'
+    console.error('PATCH /api/admin/vehicles:', e)
     return NextResponse.json({ message: msg }, { status: 500 })
   }
 }
 
+// ---------- DELETE ----------
 export async function DELETE(req: NextRequest) {
   if (!(await isAdmin(req))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
   try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) {
+      return NextResponse.json({ message: 'Parâmetro "id" é obrigatório.' }, { status: 400 })
+    }
+
     const db = getAdminDb()
-    const id = new URL(req.url).searchParams.get('id')
-    if (!id) return badRequest('Falta o id')
     await db.collection('vehicles').doc(id).delete()
     return NextResponse.json({ ok: true })
   } catch (e) {
     const msg =
       e instanceof Error && e.message === 'FIREBASE_ADMIN_MISSING_CREDS'
         ? 'Credenciais Firebase Admin em falta.'
-        : 'Erro ao apagar veículo.'
+        : 'Erro a apagar veículo.'
+    console.error('DELETE /api/admin/vehicles:', e)
     return NextResponse.json({ message: msg }, { status: 500 })
   }
 }
