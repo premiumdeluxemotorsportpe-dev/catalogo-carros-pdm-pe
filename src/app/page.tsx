@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import type { Veiculo } from './admin/page'
+import type { Veiculo } from '@/types/veiculo'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 

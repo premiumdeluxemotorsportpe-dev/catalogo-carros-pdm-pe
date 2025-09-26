@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import AddVeiculoForm from '@/components/AddVeiculoForm'
-import EditVeiculoForm, { type Veiculo } from '@/components/EditVeiculoForm'
+import EditVeiculoForm from '@/components/EditVeiculoForm'
 import Image from 'next/image'
+import type { Veiculo } from '@/types/veiculo' 
 
 type ApiResp = { items: Veiculo[]; nextCursor: string | null }
 type ApiErr = { message?: string; error?: string }
