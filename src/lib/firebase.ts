@@ -1,9 +1,8 @@
-// lib/firebase.ts
+// src/lib/firebase.ts
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app'
+import { getFirestore as getFirestoreWeb } from 'firebase/firestore'
+import { getFirestore as getFirestoreLite } from 'firebase/firestore/lite'
 
-import { initializeApp, getApps, getApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
-
-// Verifica se já existe uma instância Firebase para evitar duplicações
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
@@ -13,6 +12,10 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 }
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
+export const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
-export const db = getFirestore(app)
+// Cliente: SDK completo (onSnapshot, etc.)
+export const db = getFirestoreWeb(app)
+
+// Servidor (rotas Next): Lite (sem streams/gRPC)
+export const dbLite = getFirestoreLite(app)

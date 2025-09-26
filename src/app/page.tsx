@@ -82,11 +82,16 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
   )
 }
 
-type SortField = 'brand' | 'model' | 'price' | 'speed_original' | 'speed_tuned' | 'trunk_capacity'
+type SortField =
+  | 'brand'
+  | 'model'
+  | 'price'
+  | 'speed_original'
+  | 'speed_tuned'
+  | 'trunk_capacity'
 type SortOrder = 'asc' | 'desc'
 
-
-type ApiResp = { items: Veiculo[]; nextCursor: string | null }
+type ApiResp = { items: Veiculo[]; nextCursor?: string | null }
 
 export default function HomePage() {
   const [veiculos, setVeiculos] = useState<Veiculo[]>([])
@@ -112,9 +117,11 @@ export default function HomePage() {
 
   const [cursor, setCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string>('')
 
   async function loadVehicles(reset = false) {
     setLoading(true)
+    setErrorMsg('')
     try {
       const body = {
         search,
@@ -125,22 +132,33 @@ export default function HomePage() {
         pageSize: 24,
         cursor: reset ? null : cursor,
       }
+
       const res = await fetch('/api/vehicles', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error('Falha ao carregar veículos')
+
+      if (!res.ok) {
+        const t = await res.text().catch(() => '')
+        throw new Error(`Falha ao carregar veículos (HTTP ${res.status}) ${t}`)
+      }
+
       const data: ApiResp = await res.json()
+
       if (reset) {
-        setVeiculos(data.items as Veiculo[])
-        setFilteredVeiculos(data.items as Veiculo[])
+        setVeiculos(data.items)
+        setFilteredVeiculos(data.items)
       } else {
-        const merged = [...veiculos, ...data.items as Veiculo[]]
+        const merged = [...veiculos, ...data.items]
         setVeiculos(merged)
         setFilteredVeiculos(merged)
       }
-      setCursor(data.nextCursor)
+
+      setCursor(data.nextCursor ?? null)
+    } catch (error) {
+      console.error('loadVehicles:', error)
+      setErrorMsg('Não foi possível carregar os veículos.')
     } finally {
       setLoading(false)
     }
@@ -149,10 +167,9 @@ export default function HomePage() {
   // Carrega ao entrar e quando filtros principais mudam
   useEffect(() => {
     setCursor(null)
-    loadVehicles(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadVehicles(true)
   }, [search, categoria, stock, minPrice, maxPrice])
-
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -161,37 +178,40 @@ export default function HomePage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    const fetchVeiculos = async () => {
-      const snapshot = await getDocs(collection(db, 'vehicles'))
-      const data: Veiculo[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Veiculo, 'id'>),
-      }))
-      setVeiculos(data)
-      setFilteredVeiculos(data)
-    }
-    fetchVeiculos()
-  }, [])
-
-  // Aplica filtros
+  // Aplica filtros do lado do cliente
   useEffect(() => {
     let results = veiculos
+
     if (search) {
-      results = results.filter(v =>
-        `${v.brand} ${v.model}`.toLowerCase().includes(search.toLowerCase())
+      const s = search.toLowerCase()
+      results = results.filter((v) =>
+        `${v.brand} ${v.model}`.toLowerCase().includes(s)
       )
     }
-    if (categoria) results = results.filter(v => v.category === categoria)
-    if (stock) results = results.filter(v => v.stock === (stock === 'true'))
-    if (minPrice) results = results.filter(v => v.price >= parseFloat(minPrice))
-    if (maxPrice) results = results.filter(v => v.price <= parseFloat(maxPrice))
-    if (minSpeed) results = results.filter(v => v.speed_original >= parseFloat(minSpeed))
-    if (maxSpeed) results = results.filter(v => v.speed_original <= parseFloat(maxSpeed))
-    if (minTrunk) results = results.filter(v => v.trunk_capacity >= parseFloat(minTrunk))
-    if (maxTrunk) results = results.filter(v => v.trunk_capacity <= parseFloat(maxTrunk))
+    if (categoria) results = results.filter((v) => v.category === categoria)
+    if (stock) results = results.filter((v) => v.stock === (stock === 'true'))
+    if (minPrice) results = results.filter((v) => (v.price ?? 0) >= parseFloat(minPrice))
+    if (maxPrice) results = results.filter((v) => (v.price ?? 0) <= parseFloat(maxPrice))
+    if (minSpeed) results = results.filter((v) => (v.speed_original ?? 0) >= parseFloat(minSpeed))
+    if (maxSpeed) results = results.filter((v) => (v.speed_original ?? 0) <= parseFloat(maxSpeed))
+    if (minTrunk)
+      results = results.filter((v) => (v.trunk_capacity ?? 0) >= parseFloat(minTrunk))
+    if (maxTrunk)
+      results = results.filter((v) => (v.trunk_capacity ?? 0) <= parseFloat(maxTrunk))
+
     setFilteredVeiculos(results)
-  }, [search, minPrice, maxPrice, categoria, stock, minSpeed, maxSpeed, minTrunk, maxTrunk, veiculos])
+  }, [
+    search,
+    minPrice,
+    maxPrice,
+    categoria,
+    stock,
+    minSpeed,
+    maxSpeed,
+    minTrunk,
+    maxTrunk,
+    veiculos,
+  ])
 
   // Ordenação
   const displayedVeiculos = useMemo(() => {
@@ -199,13 +219,20 @@ export default function HomePage() {
     const dir = sortOrder === 'asc' ? 1 : -1
     list.sort((a, b) => {
       switch (sortField) {
-        case 'brand': return a.brand.localeCompare(b.brand, 'pt', { sensitivity: 'base' }) * dir
-        case 'model': return a.model.localeCompare(b.model, 'pt', { sensitivity: 'base' }) * dir
-        case 'price': return ((a.price ?? 0) - (b.price ?? 0)) * dir
-        case 'speed_original': return ((a.speed_original ?? 0) - (b.speed_original ?? 0)) * dir
-        case 'speed_tuned': return ((a.speed_tuned ?? 0) - (b.speed_tuned ?? 0)) * dir
-        case 'trunk_capacity': return ((a.trunk_capacity ?? 0) - (b.trunk_capacity ?? 0)) * dir
-        default: return 0
+        case 'brand':
+          return a.brand.localeCompare(b.brand, 'pt', { sensitivity: 'base' }) * dir
+        case 'model':
+          return a.model.localeCompare(b.model, 'pt', { sensitivity: 'base' }) * dir
+        case 'price':
+          return ((a.price ?? 0) - (b.price ?? 0)) * dir
+        case 'speed_original':
+          return ((a.speed_original ?? 0) - (b.speed_original ?? 0)) * dir
+        case 'speed_tuned':
+          return ((a.speed_tuned ?? 0) - (b.speed_tuned ?? 0)) * dir
+        case 'trunk_capacity':
+          return ((a.trunk_capacity ?? 0) - (b.trunk_capacity ?? 0)) * dir
+        default:
+          return 0
       }
     })
     return list
@@ -216,12 +243,25 @@ export default function HomePage() {
       <header className="bg-[#002447] text-white shadow-lg w-full animate-fade-in">
         <div className="max-w-screen-2xl mx-auto px-6 md:px-16 py-8 flex justify-between items-center">
           <Link href="/">
-            <Image src="/logo.webp" alt="Logotipo" width={200} height={70} className="object-contain cursor-pointer transition-transform hover:scale-105 duration-300" />
+            <Image
+              src="/logo.webp"
+              alt="Logotipo"
+              width={200}
+              height={70}
+              className="object-contain cursor-pointer transition-transform hover:scale-105 duration-300"
+              priority
+            />
           </Link>
           <nav className="flex items-center gap-10 text-lg font-semibold">
-            <Link href="/" className="hover:underline transition-colors duration-300">Home</Link>
-            <Link href="" className="hover:underline">Eventos</Link>
-            <Link href="/sobre" className="hover:underline">Sobre</Link>
+            <Link href="/" className="hover:underline transition-colors duration-300">
+              Home
+            </Link>
+            <Link href="/eventos" className="hover:underline">
+              Eventos
+            </Link>
+            <Link href="/sobre" className="hover:underline">
+              Sobre
+            </Link>
             <Link
               href="/login"
               className="border-2 border-white px-4 py-1 rounded-full hover:bg-white hover:text-[#002447] transition-all duration-300"
@@ -249,8 +289,18 @@ export default function HomePage() {
             >
               <h3 className="text-2xl font-bold mb-4 text-[#002447]">Filtros</h3>
               <div className="space-y-4">
-                <input type="text" placeholder="Marca ou Modelo" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm text-gray-700">
+                <input
+                  type="text"
+                  placeholder="Marca ou Modelo"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <select
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm text-gray-700"
+                >
                   <option value="">Todas as Categorias</option>
                   <option value="Bicicleta">Bicicleta</option>
                   <option value="Buggy">Buggy</option>
@@ -268,17 +318,57 @@ export default function HomePage() {
                   <option value="SUV">SUV</option>
                   <option value="Supercarro">Supercarro</option>
                 </select>
-                <select value={stock} onChange={(e) => setStock(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm text-gray-700">
+                <select
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm text-gray-700"
+                >
                   <option value="">Disponibilidade</option>
                   <option value="true">Disponível</option>
                   <option value="false">Indisponível</option>
                 </select>
-                <input type="number" placeholder="Preço mínimo ($)" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Preço máximo ($)" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Velocidade mínima (km/h)" value={minSpeed} onChange={(e) => setMinSpeed(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Velocidade máxima (km/h)" value={maxSpeed} onChange={(e) => setMaxSpeed(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Mala mínima (Kg)" value={minTrunk} onChange={(e) => setMinTrunk(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Mala máxima (Kg)" value={maxTrunk} onChange={(e) => setMaxTrunk(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
+                <input
+                  type="number"
+                  placeholder="Preço mínimo (€)"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Preço máximo (€)"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Velocidade mínima (km/h)"
+                  value={minSpeed}
+                  onChange={(e) => setMinSpeed(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Velocidade máxima (km/h)"
+                  value={maxSpeed}
+                  onChange={(e) => setMaxSpeed(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Mala mínima (Kg)"
+                  value={minTrunk}
+                  onChange={(e) => setMinTrunk(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Mala máxima (Kg)"
+                  value={maxTrunk}
+                  onChange={(e) => setMaxTrunk(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-sm"
+                />
               </div>
             </motion.aside>
           )}
@@ -300,7 +390,9 @@ export default function HomePage() {
             {/* Controlo de ordenação */}
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end w-full">
               <div className="flex items-center gap-2">
-                <label htmlFor="sortField" className="text-sm font-medium text-gray-700">Ordenar por</label>
+                <label htmlFor="sortField" className="text-sm font-medium text-gray-700">
+                  Ordenar por
+                </label>
                 <select
                   id="sortField"
                   value={sortField}
@@ -317,7 +409,9 @@ export default function HomePage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <label htmlFor="sortOrder" className="text-sm font-medium text-gray-700">Ordem</label>
+                <label htmlFor="sortOrder" className="text-sm font-medium text-gray-700">
+                  Ordem
+                </label>
                 <select
                   id="sortOrder"
                   value={sortOrder}
@@ -331,7 +425,11 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* <h2 className="text-4xl font-bold mb-8 text-[#002447]">Todos os Veículos</h2> */}
+          {errorMsg && (
+            <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {errorMsg}
+            </div>
+          )}
 
           {displayedVeiculos.length === 0 ? (
             <p className="text-center text-gray-500">Nenhum veículo encontrado.</p>
@@ -349,14 +447,26 @@ export default function HomePage() {
                   <VehicleImage src={v.image_url} alt={v.model} />
 
                   <div className="p-5 space-y-2">
-                    <h3 className="text-xl font-bold text-[#002447]">{v.brand} {v.model}</h3>
+                    <h3 className="text-xl font-bold text-[#002447]">
+                      {v.brand} {v.model}
+                    </h3>
                     <p className="text-sm text-gray-500">Categoria: {v.category}</p>
-                    <p className="text-sm">Preço: <strong>{v.price} $</strong></p>
-                    <p className="text-sm">Vel. de Origem: {v.speed_original} km/h</p>
-                    <p className="text-sm">Vel. Full Tuned: {v.speed_tuned} km/h</p>
-                    <p className="text-sm">Capacidade da mala: {v.trunk_capacity} Kg</p>
+                    <p className="text-sm">
+                      Preço: <strong>€ {v.price?.toLocaleString('pt-PT') ?? 0}</strong>
+                    </p>
+                    <p className="text-sm">Vel. de Origem: {v.speed_original ?? 0} km/h</p>
+                    {v.speed_tuned !== undefined && (
+                      <p className="text-sm">Vel. Full Tuned: {v.speed_tuned} km/h</p>
+                    )}
+                    {v.trunk_capacity !== undefined && (
+                      <p className="text-sm">Capacidade da mala: {v.trunk_capacity} Kg</p>
+                    )}
                     <p className="text-sm mt-1">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${v.stock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      <span
+                        className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                          v.stock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
                         {v.stock ? 'Disponível' : 'Indisponível'}
                       </span>
                     </p>
@@ -365,7 +475,8 @@ export default function HomePage() {
               ))}
             </div>
           )}
-        {cursor && (
+
+          {cursor && (
             <div className="mt-8 flex justify-center">
               <button
                 className="px-4 py-2 rounded-full bg-[#002447] text-white disabled:opacity-50"

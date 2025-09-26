@@ -10,7 +10,7 @@ const securityHeaders = [
       default-src 'self';
       script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.googletagmanager.com;
       style-src 'self' 'unsafe-inline';
-      img-src 'self' data: blob: https://res.cloudinary.com https://*.googleusercontent.com;
+      img-src 'self' data: blob: https://res.cloudinary.com https://r2.fivemanage.com https://static.wikia.nocookie.net https://img.gta5-mods.com https://*.googleusercontent.com;
       font-src 'self' data:;
       connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://res.cloudinary.com;
       frame-ancestors 'none';
@@ -27,6 +27,10 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
+      { protocol: 'https', hostname: 'r2.fivemanage.com' },
+      { protocol: 'https', hostname: 'static.wikia.nocookie.net' },
+      { protocol: 'https', hostname: 'img.gta5-mods.com' },
+      { protocol: 'https', hostname: '*.googleusercontent.com' },
     ],
   },
 }

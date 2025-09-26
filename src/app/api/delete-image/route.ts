@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { v2 as cloudinary } from 'cloudinary'
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary'
 
 export const runtime = 'nodejs'
 
@@ -18,20 +18,29 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as DeleteBody
   } catch (error) {
-    return new Response('Erro ao apagar', { status: 500 });
+    console.error('Erro ao ler body do delete-image:', error)
+    return NextResponse.json({ error: 'Erro ao ler o body' }, { status: 400 })
   }
 
   const { public_id } = body
 
   if (!public_id || typeof public_id !== 'string') {
-    return NextResponse.json({ error: 'public_id em falta ou inválido' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'public_id em falta ou inválido' },
+      { status: 400 }
+    )
   }
 
   try {
-    const result = await cloudinary.uploader.destroy(public_id)
+    const result: UploadApiResponse | { result: string } =
+      await cloudinary.uploader.destroy(public_id)
+
     return NextResponse.json({ success: true, result })
-  } catch (err) {
-    console.error('Erro ao apagar imagem no Cloudinary:', err)
-    return NextResponse.json({ error: 'Erro ao apagar imagem' }, { status: 500 })
+  } catch (error) {
+    console.error('Erro ao apagar imagem no Cloudinary:', error)
+    return NextResponse.json(
+      { error: 'Erro ao apagar imagem no Cloudinary' },
+      { status: 500 }
+    )
   }
 }

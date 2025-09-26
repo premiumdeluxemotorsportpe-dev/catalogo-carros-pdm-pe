@@ -25,8 +25,6 @@ export default function LoginPage() {
       setError(data.message || 'Erro no login')
       return
     }
-
-    localStorage.setItem('token', data.token)
     router.push('/admin')
   }
 
