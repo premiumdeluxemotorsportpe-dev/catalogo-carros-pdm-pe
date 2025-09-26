@@ -1,19 +1,17 @@
-import 'server-only'
+// src/lib/auth.ts
 import { jwtVerify } from 'jose'
-import type { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET!)
+export type AdminSession = { admin: boolean; name: string }
 
-export async function verifySession(req: NextRequest) {
-  const token = req.cookies.get('session')?.value
-  if (!token) return null
-  try {
-    const { payload } = await jwtVerify(token, secret)
-    return {
-      uid: payload.sub as string,
-      isAdmin: payload['admin'] === true,
-    }
-  } catch {
-    return null
-  }
+export async function requireAdmin(): Promise<AdminSession> {
+  const jar = await cookies()
+  const token = jar.get('session')?.value
+  if (!token) throw new Error('Sem sessão')
+
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me')
+  const { payload } = await jwtVerify(token, secret)
+  if (!payload || payload.admin !== true) throw new Error('Sessão inválida')
+
+  return { admin: true, name: String(payload.name || '') }
 }

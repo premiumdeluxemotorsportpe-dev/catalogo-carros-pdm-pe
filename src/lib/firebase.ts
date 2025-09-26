@@ -1,4 +1,3 @@
-// src/lib/firebase.ts
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app'
 import { getFirestore as getFirestoreWeb } from 'firebase/firestore'
 import { getFirestore as getFirestoreLite } from 'firebase/firestore/lite'
@@ -14,8 +13,7 @@ const firebaseConfig = {
 
 export const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
-// Cliente: SDK completo (onSnapshot, etc.)
+// Para componentes cliente
 export const db = getFirestoreWeb(app)
-
-// Servidor (rotas Next): Lite (sem streams/gRPC)
+// Para rotas (server) – sem streams/gRPC
 export const dbLite = getFirestoreLite(app)

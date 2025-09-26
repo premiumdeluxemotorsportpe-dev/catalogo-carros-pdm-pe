@@ -1,65 +1,57 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const router = useRouter()
+  const sp = useSearchParams()
+  const nextPath = sp.get('next') || '/admin'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
-
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, password }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      setError(data.message || 'Erro no login')
-      return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, password }),
+      })
+      const ct = res.headers.get('content-type') ?? ''
+      const data = ct.includes('application/json') ? await res.json() : {}
+      if (!res.ok) {
+        setError(data?.message || `Erro (HTTP ${res.status})`)
+        return
+      }
+      router.replace(nextPath)
+    } catch {
+      setError('Falha de rede.')
+    } finally {
+      setLoading(false)
     }
-    router.push('/admin')
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 text-black">
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-md w-full max-w-sm">
-        <h2 className="text-2xl font-semibold mb-4">Login de Admin</h2>
-        {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
-        <div className="mb-4">
-          <label className="block text-sm mb-1">Nome</label>
-          <input
-            type="text"
-            className="w-full px-3 py-2 border rounded"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-sm mb-1">Senha</label>
-          <input
-            type="password"
-            className="w-full px-3 py-2 border rounded"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        <button
-          type="submit"
-          className="w-full bg-[#002447] text-white py-2 rounded hover:bg-[#003366]"
-        >
-          Entrar
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <form onSubmit={handleSubmit} className="w-full max-w-md bg-white border rounded-2xl p-8 shadow">
+        <h1 className="text-2xl font-bold mb-4">Login de Admin</h1>
+        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+
+        <label className="block text-sm mb-1">Nome</label>
+        <input className="w-full border rounded px-3 py-2 mb-4" value={name} onChange={e=>setName(e.target.value)} required />
+
+        <label className="block text-sm mb-1">Senha</label>
+        <input type="password" className="w-full border rounded px-3 py-2 mb-6" value={password} onChange={e=>setPassword(e.target.value)} required />
+
+        <button disabled={loading} className="w-full bg-[#002447] text-white rounded py-2 disabled:opacity-60">
+          {loading ? 'A entrar…' : 'Entrar'}
         </button>
       </form>
-    </div>
+    </main>
   )
 }

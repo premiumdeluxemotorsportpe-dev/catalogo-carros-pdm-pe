@@ -1,4 +1,3 @@
-// src/lib/firebaseAdmin.ts
 import admin from 'firebase-admin'
 
 function getAdminApp(): admin.app.App {
@@ -10,13 +9,8 @@ function getAdminApp(): admin.app.App {
 
   if (!privateKey && process.env.FIREBASE_PRIVATE_KEY_BASE64) {
     try {
-      privateKey = Buffer.from(
-        process.env.FIREBASE_PRIVATE_KEY_BASE64,
-        'base64'
-      ).toString('utf8')
-    } catch {
-      /* ignore */
-    }
+      privateKey = Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, 'base64').toString('utf8')
+    } catch { /* ignore */ }
   }
 
   if (privateKey && privateKey.trim().startsWith('{')) {
@@ -27,15 +21,9 @@ function getAdminApp(): admin.app.App {
   }
 
   if (projectId && clientEmail && privateKey) {
-    if (privateKey.includes('\\n')) {
-      privateKey = privateKey.replace(/\\n/g, '\n')
-    }
+    if (privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n')
     return admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
+      credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
     })
   }
 
@@ -43,17 +31,12 @@ function getAdminApp(): admin.app.App {
     return admin.initializeApp()
   }
 
-  throw new Error(
-    'Firebase Admin: credenciais em falta. Define FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY (ou *_BASE64 / GOOGLE_APPLICATION_CREDENTIALS).'
-  )
+  throw new Error('Firebase Admin: credenciais em falta.')
 }
 
 const app = getAdminApp()
-
 export const adminDb = admin.firestore()
 export const adminAuth = admin.auth()
 
-// export default já existia:
 export default app
-// alias para satisfazer `import { adminApp } from '@/lib/firebaseAdmin'`
-export { app as adminApp }
+export { app as adminApp } // opcional para scripts

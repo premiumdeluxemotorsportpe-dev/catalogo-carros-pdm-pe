@@ -2,24 +2,38 @@
 
 import { useState } from 'react'
 import type React from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
-import { Veiculo } from '@/app/admin/page'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
+
+/** Mantém o shape “oficial” do veículo (DB) */
+export type Veiculo = {
+  id: string
+  brand: string
+  category: string
+  model: string
+  price: number
+  speed_original: number
+  speed_tuned?: number
+  trunk_capacity?: number
+  stock: boolean
+  image_url?: string
+  image_public_id?: string
+  published: boolean
+}
+
+/** Estado local “editável”: campos numéricos aceitam '' durante a edição */
+type VeiculoEditable =
+  Omit<Veiculo, 'price' | 'speed_original' | 'speed_tuned' | 'trunk_capacity'> & {
+    price: number | ''
+    speed_original: number | ''
+    speed_tuned?: number | ''
+    trunk_capacity?: number | ''
+  }
 
 interface Props {
   veiculo: Veiculo
   onClose: () => void
   onSuccess: () => void
-}
-
-/**
- * Mantemos os números como number (UI aceita value=number em <input type="number" />)
- * e o URL da imagem como string opcional.
- */
-type VeiculoEditable = Veiculo & {
-  image_url?: string
 }
 
 const textFields = ['brand', 'model', 'category'] as const
@@ -29,31 +43,47 @@ const numericFields = ['price', 'speed_original', 'speed_tuned', 'trunk_capacity
 type NumericField = typeof numericFields[number]
 
 export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) {
-  const [formData, setFormData] = useState<VeiculoEditable>(veiculo)
+  // inicializa o estado convertendo números -> números (ou undefined) e preserva published/stock
+  const [formData, setFormData] = useState<VeiculoEditable>({
+    id: veiculo.id,
+    brand: veiculo.brand,
+    category: veiculo.category,
+    model: veiculo.model,
+    price: veiculo.price,
+    speed_original: veiculo.speed_original,
+    speed_tuned: veiculo.speed_tuned,
+    trunk_capacity: veiculo.trunk_capacity,
+    stock: veiculo.stock,
+    image_url: veiculo.image_url,
+    image_public_id: veiculo.image_public_id,
+    published: veiculo.published,
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPreview, setShowPreview] = useState(true)
 
-  // Handlers tipados por campo para evitar `any` e `as never`
   const handleTextChange =
     (field: TextField) =>
-      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setFormData((prev) => ({ ...prev, [field]: e.target.value }))
-      }
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }))
+    }
 
   const handleNumberChange =
     (field: NumericField) =>
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { value } = e.target
-        setFormData((prev) => ({
-          ...prev,
-          [field]: value === '' ? ('' as unknown as number) : Number(value),
-        }))
-      }
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { value } = e.target
+      // '' durante a edição; caso contrário, número
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value === '' ? '' : Number(value),
+      }))
+    }
 
-  const handleStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({ ...prev, stock: e.target.checked }))
-  }
+  const handleBool =
+    (field: 'stock' | 'published') =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.checked }))
+    }
 
   const handleImageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setShowPreview(true)
@@ -73,38 +103,73 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
         return
       }
 
-      const updatedData: Partial<VeiculoEditable> = {
-        brand: formData.brand,
-        model: formData.model,
-        category: formData.category,
-        price: Number(formData.price),
-        speed_original: Number(formData.speed_original),
-        speed_tuned:
-          formData.speed_tuned === ('' as unknown as number)
-            ? undefined
-            : Number(formData.speed_tuned),
-        trunk_capacity:
-          formData.trunk_capacity === ('' as unknown as number)
-            ? undefined
-            : Number(formData.trunk_capacity),
-        stock: Boolean(formData.stock),
-        image_url: url || '',
+      // valida os obrigatórios
+      const priceNum =
+        formData.price === '' ? NaN : Number(formData.price)
+      const speedOrigNum =
+        formData.speed_original === '' ? NaN : Number(formData.speed_original)
+
+      if (Number.isNaN(priceNum) || Number.isNaN(speedOrigNum)) {
+        setError('Preço e Velocidade Original são obrigatórios.')
+        setLoading(false)
+        return
       }
 
-      // remove undefined, null e NaN
-      const cleanedEntries = Object.entries(updatedData).filter(([, v]) => {
-        if (v === undefined || v === null) return false
-        if (typeof v === 'number' && Number.isNaN(v)) return false
-        return true
-      })
-      const cleanedData = Object.fromEntries(cleanedEntries)
+      const speedTunedNum =
+        formData.speed_tuned === '' || formData.speed_tuned === undefined
+          ? undefined
+          : Number(formData.speed_tuned)
 
-      await updateDoc(doc(db, 'vehicles', veiculo.id), cleanedData)
+      const trunkNum =
+        formData.trunk_capacity === '' || formData.trunk_capacity === undefined
+          ? undefined
+          : Number(formData.trunk_capacity)
+
+      const payload = {
+        id: formData.id,
+        brand: formData.brand,
+        category: formData.category,
+        model: formData.model,
+        price: priceNum,
+        speed_original: speedOrigNum,
+        speed_tuned: Number.isNaN(speedTunedNum!) ? undefined : speedTunedNum,
+        trunk_capacity: Number.isNaN(trunkNum!) ? undefined : trunkNum,
+        stock: Boolean(formData.stock),
+        image_url: url || '',
+        published: Boolean(formData.published),
+      }
+
+      // remove undefined/NaN
+      const cleaned = Object.fromEntries(
+        Object.entries(payload).filter(([, v]) => {
+          if (v === undefined || v === null) return false
+          if (typeof v === 'number' && Number.isNaN(v)) return false
+          return true
+        })
+      )
+
+      const res = await fetch('/api/admin/vehicles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleaned),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(
+          (data as { error?: string; message?: string })?.error ||
+            (data as { message?: string })?.message ||
+            `Erro (HTTP ${res.status})`
+        )
+        setLoading(false)
+        return
+      }
+
       onSuccess()
       onClose()
-    } catch (error) {
-      console.error('Erro ao atualizar veículo:', error)
-      setError('Erro ao atualizar veículo. Verifica os dados e tenta novamente.')
+    } catch (err) {
+      console.error('Erro ao atualizar veículo:', err)
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar veículo.')
     } finally {
       setLoading(false)
     }
@@ -138,11 +203,11 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                 </label>
                 <input
                   id={field}
-                  type="text"
                   name={field}
+                  type="text"
                   value={formData[field] as string}
                   onChange={handleTextChange(field)}
-                  className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="border border-gray-300 rounded-md px-4 py-2"
                   required
                 />
               </div>
@@ -154,19 +219,19 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                   {field === 'price'
                     ? 'Preço (€)'
                     : field === 'speed_original'
-                      ? 'Velocidade Original (km/h)'
-                      : field === 'speed_tuned'
-                        ? 'Velocidade Tunada (km/h)'
-                        : 'Capacidade da Mala (Kg)'}
+                    ? 'Velocidade Original (km/h)'
+                    : field === 'speed_tuned'
+                    ? 'Velocidade Tunada (km/h)'
+                    : 'Capacidade da Mala (Kg)'}
                 </label>
                 <input
                   id={field}
-                  type="number"
                   name={field}
-                  value={formData[field] as number}
+                  type="number"
+                  value={(formData[field] as number | '') ?? ''}
                   onChange={handleNumberChange(field)}
-                  className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  required={field !== 'speed_tuned' && field !== 'trunk_capacity'}
+                  className="border border-gray-300 rounded-md px-4 py-2"
+                  required={field === 'price' || field === 'speed_original'}
                 />
               </div>
             ))}
@@ -178,28 +243,38 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
               <input
                 id="stock"
                 type="checkbox"
-                name="stock"
-                checked={Boolean(formData.stock)}
-                onChange={handleStockChange}
+                checked={!!formData.stock}
+                onChange={handleBool('stock')}
                 className="w-5 h-5"
               />
             </div>
 
-            {/* Campo de URL da imagem (substitui upload) */}
+            <div className="md:col-span-2 flex items-center gap-3 mt-2">
+              <label htmlFor="published" className="text-sm font-semibold text-gray-700">
+                Publicado (visível ao público):
+              </label>
+              <input
+                id="published"
+                type="checkbox"
+                checked={!!formData.published}
+                onChange={handleBool('published')}
+                className="w-5 h-5"
+              />
+            </div>
+
             <div className="md:col-span-2 flex flex-col gap-2">
               <label htmlFor="image_url" className="text-sm font-semibold text-gray-700">
                 URL da imagem (http/https)
               </label>
               <input
                 id="image_url"
-                type="url"
                 name="image_url"
+                type="url"
                 placeholder="https://exemplo.com/imagem.webp"
                 value={formData.image_url ?? ''}
                 onChange={handleImageUrlChange}
-                className="border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 rounded-md px-4 py-2"
               />
-
               {validPreview && (
                 <div className="mt-2 w-full h-48 relative">
                   <Image
@@ -224,14 +299,14 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition"
+                className="px-6 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-[#002447] text-white rounded-md hover:bg-[#003366] transition"
+                className="px-6 py-2 bg-[#002447] text-white rounded-md hover:bg-[#003366]"
               >
                 {loading ? 'A guardar...' : 'Guardar'}
               </button>

@@ -1,34 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type React from 'react'
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
 import AddVeiculoForm from '@/components/AddVeiculoForm'
-import EditVeiculoForm from '@/components/EditVeiculoForm'
+import EditVeiculoForm, { type Veiculo } from '@/components/EditVeiculoForm'
 import Image from 'next/image'
 
-/** Tipo partilhado com os formulários */
-export type Veiculo = {
-  id: string
-  brand: string
-  category: string
-  model: string
-  price: number
-  speed_original: number
-  speed_tuned?: number
-  trunk_capacity?: number
-  stock: boolean
-  image_url: string
-  image_public_id?: string
-}
+type ApiResp = { items: Veiculo[]; nextCursor: string | null }
 
 export default function AdminPage() {
   const [vehicles, setVehicles] = useState<Veiculo[]>([])
@@ -39,50 +17,42 @@ export default function AdminPage() {
   const [editing, setEditing] = useState<Veiculo | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const vehiclesRef = useMemo(() => collection(db, 'vehicles'), [])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  /** Carrega os veículos uma vez (simples e robusto para admin) */
-  const fetchVehicles = async () => {
-    setLoading(true)
-    setError('')
+  async function fetchVehicles(reset = true) {
     try {
-      const q = query(vehiclesRef, orderBy('brand', 'asc'))
-      const snap = await getDocs(q)
-      const list: Veiculo[] = snap.docs.map((d) => {
-        const data = d.data() as Omit<Veiculo, 'id'>
-        return {
-          id: d.id,
-          brand: String(data.brand ?? ''),
-          category: String(data.category ?? ''),
-          model: String(data.model ?? ''),
-          price: Number(data.price ?? 0),
-          speed_original: Number(data.speed_original ?? 0),
-          speed_tuned:
-            data.speed_tuned !== undefined ? Number(data.speed_tuned) : undefined,
-          trunk_capacity:
-            data.trunk_capacity !== undefined
-              ? Number(data.trunk_capacity)
-              : undefined,
-          stock: Boolean(data.stock),
-          image_url: String(data.image_url ?? ''),
-          image_public_id:
-            data.image_public_id !== undefined
-              ? String(data.image_public_id)
-              : undefined,
-        }
-      })
-      setVehicles(list)
-    } catch (error) {
-      console.error('Erro a carregar veículos:', error)
+      if (reset) {
+        setLoading(true)
+        setError('')
+      }
+      const url = new URL('/api/admin/vehicles', window.location.origin)
+      if (!reset && cursor) url.searchParams.set('cursor', cursor)
+      url.searchParams.set('pageSize', '100')
+
+      const res = await fetch(url, { method: 'GET' })
+      const data = (await res.json().catch(() => ({}))) as ApiResp
+      if (!res.ok) {
+        throw new Error((data as any)?.message || 'Falha a carregar.')
+      }
+
+      if (reset) {
+        setVehicles(data.items ?? [])
+      } else {
+        setVehicles((prev) => [...prev, ...(data.items ?? [])])
+      }
+      setCursor(data.nextCursor ?? null)
+    } catch (e) {
+      console.error(e)
       setError('Não foi possível carregar os veículos.')
     } finally {
-      setLoading(false)
+      if (reset) setLoading(false)
+      setLoadingMore(false)
     }
   }
 
   useEffect(() => {
-    // carregar à entrada
-    void fetchVehicles()
+    void fetchVehicles(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -92,8 +62,14 @@ export default function AdminPage() {
     setDeletingId(id)
     setError('')
     try {
-      await deleteDoc(doc(db, 'vehicles', id))
-      await fetchVehicles()
+      const res = await fetch(`/api/admin/vehicles?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as any)?.message || 'Falha ao apagar.')
+      }
+      await fetchVehicles(true)
     } catch (error) {
       console.error('Erro ao apagar veículo:', error)
       setError('Não foi possível apagar o veículo.')
@@ -104,12 +80,12 @@ export default function AdminPage() {
 
   const handleAddSuccess = () => {
     setShowAdd(false)
-    void fetchVehicles()
+    void fetchVehicles(true)
   }
 
   const handleEditSuccess = () => {
     setEditing(null)
-    void fetchVehicles()
+    void fetchVehicles(true)
   }
 
   return (
@@ -139,83 +115,111 @@ export default function AdminPage() {
         <div className="text-gray-600">A carregar…</div>
       ) : vehicles.length === 0 ? (
         <div className="rounded-md border border-gray-200 p-6 text-gray-600">
-          Ainda não há veículos. Clica em <strong>Adicionar veículo</strong>.
+          Não há veículos ou estão todos por publicar. Adiciona um novo ou define <strong>Publicado</strong> em algum existente.
         </div>
       ) : (
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {vehicles.map((v) => (
-            <article
-              key={v.id}
-              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col"
-            >
-              <div className="relative w-full h-48">
-                <Image
-                  src={
-                    v.image_url && /^https?:\/\//i.test(v.image_url)
-                      ? v.image_url
-                      : 'https://res.cloudinary.com/demo/image/upload/sample.jpg'
-                  }
-                  alt={`${v.brand} ${v.model}`}
-                  fill
-                  className="object-cover"
-                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                />
-              </div>
+        <>
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {vehicles.map((v) => (
+              <article
+                key={v.id}
+                className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col"
+              >
+                <div className="relative w-full h-48">
+                  <Image
+                    src={
+                      v.image_url && /^https?:\/\//i.test(v.image_url)
+                        ? v.image_url
+                        : 'https://res.cloudinary.com/demo/image/upload/sample.jpg'
+                    }
+                    alt={`${v.brand} ${v.model}`}
+                    fill
+                    className="object-cover"
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  />
+                </div>
 
-              <div className="p-4 flex-1 flex flex-col gap-2">
-                <h3 className="text-lg font-semibold text-[#002447]">
-                  {v.brand} {v.model}
-                </h3>
-                <p className="text-sm text-gray-600">{v.category}</p>
-
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-700">
-                  <div>
-                    <span className="block text-xs text-gray-500">Preço</span>
-                    <span>€ {v.price.toLocaleString('pt-PT')}</span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-gray-500">Stock</span>
-                    <span className={v.stock ? 'text-emerald-700' : 'text-rose-700'}>
-                      {v.stock ? 'Disponível' : 'Indisponível'}
+                <div className="p-4 flex-1 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-[#002447]">
+                      {v.brand} {v.model}
+                    </h3>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        v.published ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                      }`}
+                      title={v.published ? 'Publicado' : 'Rascunho'}
+                    >
+                      {v.published ? 'Publicado' : 'Rascunho'}
                     </span>
                   </div>
-                  <div>
-                    <span className="block text-xs text-gray-500">Veloc. Orig.</span>
-                    <span>{v.speed_original} km/h</span>
-                  </div>
-                  {v.speed_tuned !== undefined && (
-                    <div>
-                      <span className="block text-xs text-gray-500">Veloc. Tunada</span>
-                      <span>{v.speed_tuned} km/h</span>
-                    </div>
-                  )}
-                  {v.trunk_capacity !== undefined && (
-                    <div>
-                      <span className="block text-xs text-gray-500">Mala</span>
-                      <span>{v.trunk_capacity} Kg</span>
-                    </div>
-                  )}
-                </div>
 
-                <div className="mt-4 flex gap-3">
-                  <button
-                    onClick={() => setEditing(v)}
-                    className="px-3 py-2 rounded-md border border-gray-300 text-gray-800 hover:bg-gray-50 transition"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => handleDelete(v.id)}
-                    disabled={deletingId === v.id}
-                    className="px-3 py-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-60"
-                  >
-                    {deletingId === v.id ? 'A remover…' : 'Remover'}
-                  </button>
+                  <p className="text-sm text-gray-600">{v.category}</p>
+
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-700">
+                    <div>
+                      <span className="block text-xs text-gray-500">Preço</span>
+                      <span>€ {Number(v.price ?? 0).toLocaleString('pt-PT')}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-gray-500">Stock</span>
+                      <span className={v.stock ? 'text-emerald-700' : 'text-rose-700'}>
+                        {v.stock ? 'Disponível' : 'Indisponível'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-gray-500">Veloc. Orig.</span>
+                      <span>{v.speed_original} km/h</span>
+                    </div>
+                    {v.speed_tuned !== undefined && (
+                      <div>
+                        <span className="block text-xs text-gray-500">Veloc. Tunada</span>
+                        <span>{v.speed_tuned} km/h</span>
+                      </div>
+                    )}
+                    {v.trunk_capacity !== undefined && (
+                      <div>
+                        <span className="block text-xs text-gray-500">Mala</span>
+                        <span>{v.trunk_capacity} Kg</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => setEditing(v)}
+                      className="px-3 py-2 rounded-md border border-gray-300 text-gray-800 hover:bg-gray-50 transition"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDelete(v.id)}
+                      disabled={deletingId === v.id}
+                      className="px-3 py-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-60"
+                    >
+                      {deletingId === v.id ? 'A remover…' : 'Remover'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </section>
+              </article>
+            ))}
+          </section>
+
+          {cursor && (
+            <div className="mt-8 flex justify-center">
+              <button
+                className="px-4 py-2 rounded-full bg-[#002447] text-white disabled:opacity-50"
+                onClick={() => {
+                  setLoadingMore(true)
+                  void fetchVehicles(false)
+                }}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'A carregar…' : 'Carregar mais'}
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal Adicionar */}
@@ -224,13 +228,13 @@ export default function AdminPage() {
       )}
 
       {/* Modal Editar */}
-      {editing && (
+      {editing ? (
         <EditVeiculoForm
           veiculo={editing}
           onClose={() => setEditing(null)}
           onSuccess={handleEditSuccess}
         />
-      )}
+      ) : null}
     </main>
   )
 }

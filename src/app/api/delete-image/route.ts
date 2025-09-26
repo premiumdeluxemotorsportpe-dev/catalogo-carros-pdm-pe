@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { v2 as cloudinary, UploadApiResponse } from 'cloudinary'
+import { v2 as cloudinary } from 'cloudinary'
+import { jwtVerify } from 'jose'
 
 export const runtime = 'nodejs'
 
@@ -9,38 +10,32 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET!,
 })
 
-type DeleteBody = {
-  public_id?: string
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me')
+
+async function assertAdmin(req: NextRequest) {
+  const token = req.cookies.get('session')?.value
+  if (!token) return false
+  try { const { payload } = await jwtVerify(token, secret); return payload.admin === true }
+  catch { return false }
 }
 
 export async function POST(req: NextRequest) {
-  let body: DeleteBody
-  try {
-    body = (await req.json()) as DeleteBody
-  } catch (error) {
-    console.error('Erro ao ler body do delete-image:', error)
-    return NextResponse.json({ error: 'Erro ao ler o body' }, { status: 400 })
-  }
+  if (!(await assertAdmin(req))) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
 
+  let body: { public_id?: string }
+  try {
+    body = (await req.json()) as { public_id?: string }
+  } catch {
+    return NextResponse.json({ error: 'Bad JSON' }, { status: 400 })
+  }
   const { public_id } = body
-
-  if (!public_id || typeof public_id !== 'string') {
-    return NextResponse.json(
-      { error: 'public_id em falta ou inválido' },
-      { status: 400 }
-    )
-  }
+  if (!public_id) return NextResponse.json({ error: 'public_id em falta' }, { status: 400 })
 
   try {
-    const result: UploadApiResponse | { result: string } =
-      await cloudinary.uploader.destroy(public_id)
-
+    const result = await cloudinary.uploader.destroy(public_id)
     return NextResponse.json({ success: true, result })
-  } catch (error) {
-    console.error('Erro ao apagar imagem no Cloudinary:', error)
-    return NextResponse.json(
-      { error: 'Erro ao apagar imagem no Cloudinary' },
-      { status: 500 }
-    )
+  } catch (err) {
+    console.error('Erro ao apagar imagem no Cloudinary:', err)
+    return NextResponse.json({ error: 'Erro ao apagar imagem' }, { status: 500 })
   }
 }
