@@ -21,7 +21,7 @@ export default function SobrePage() {
             <Link href="/" className="hover:underline transition-colors duration-300">
               Home
             </Link>
-            <Link href="/eventos" className="hover:underline">
+            <Link href="/" className="hover:underline">
               Eventos
             </Link>
             <Link href="/sobre" className="hover:underline">
