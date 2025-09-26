@@ -221,7 +221,7 @@ export default function HomePage() {
           </Link>
           <nav className="flex items-center gap-10 text-lg font-semibold">
             <Link href="/" className="hover:underline transition-colors duration-300">Home</Link>
-            <Link href="/" className="hover:underline">Eventos</Link>
+            <Link href="" className="hover:underline">Eventos</Link>
             <Link href="/sobre" className="hover:underline">Sobre</Link>
             <Link href="/login" className="border-2 border-white px-4 py-1 rounded-full hover:bg-white hover:text-[#002447] transition-all duration-300">Login</Link>
           </nav>
