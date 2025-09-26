@@ -56,7 +56,7 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
           src="/sem-imagem.webp"
           alt={`${alt} (sem imagem)`}
           fill
-          className="object-cover"
+          className="object-contain"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 22vw"
         />
       ) : (
@@ -64,12 +64,119 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
           src={src}
           alt={alt}
           fill
-          className="object-cover"
+          className="object-contain"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 22vw"
           onError={() => setError(true)}
         />
       )}
     </div>
+  )
+}
+
+/** Modal de detalhes do veículo */
+function VehicleModal({
+  v,
+  onClose,
+}: {
+  v: Veiculo
+  onClose: () => void
+}) {
+  // Fechar por ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Bloquear scroll de fundo
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        aria-modal="true"
+        role="dialog"
+        onClick={onClose}
+      >
+        <motion.div
+          className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Botão fechar (apenas a cruz) */}
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            className="absolute top-3 right-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow hover:bg-white"
+          >
+            <span className="text-xl leading-none">×</span>
+          </button>
+
+          {/* Imagem grande SEM cortes (object-contain) */}
+          <div className="relative w-full h-[420px] bg-gray-100">
+            <Image
+              src={
+                v.image_url && /^https?:\/\//i.test(v.image_url)
+                  ? v.image_url
+                  : '/sem-imagem.webp'
+              }
+              alt={`${v.brand} ${v.model}`}
+              fill
+              className="object-contain"
+              sizes="(max-width: 1024px) 100vw, 800px"
+              priority
+            />
+          </div>
+
+          {/* Conteúdo */}
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+              <h3 className="text-2xl font-bold text-[#002447]">
+                {v.brand} {v.model}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">Categoria: {v.category}</p>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <p>
+                Preço:{' '}
+                <strong>
+                  € {Number(v.price ?? 0).toLocaleString('pt-PT')}
+                </strong>
+              </p>
+              <p>Vel. de Origem: {v.speed_original ?? 0} km/h</p>
+              {v.speed_tuned !== undefined && (
+                <p>Vel. Full Tuned: {v.speed_tuned} km/h</p>
+              )}
+              {v.trunk_capacity !== undefined && (
+                <p>Capacidade da mala: {v.trunk_capacity} Kg</p>
+              )}
+            </div>
+
+            <div className="flex items-start md:items-center">
+              <span
+                className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                  v.stock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}
+              >
+                {v.stock ? 'Disponível' : 'Indisponível'}
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -102,6 +209,9 @@ export default function HomePage() {
   const [cursor, setCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string>('')
+
+  // Modal selection
+  const [selected, setSelected] = useState<Veiculo | null>(null)
 
   // Carregamento inicial / quando mudam filtros principais
   const loadInitial = useCallback(async () => {
@@ -323,11 +433,12 @@ export default function HomePage() {
               {displayedVeiculos.map((v, i) => (
                 <motion.div
                   key={v.id}
-                  className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition duration-300 overflow-hidden border border-gray-100"
+                  className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition duration-300 overflow-hidden border border-gray-100 cursor-pointer"
                   whileHover={{ scale: 1.03 }}
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
+                  onClick={() => setSelected(v)}
                 >
                   <VehicleImage src={v.image_url} alt={v.model} />
                   <div className="p-5 space-y-2">
@@ -361,6 +472,9 @@ export default function HomePage() {
       <footer className="bg-[#002447] text-white text-center py-12 text-lg w-full">
         <p>&copy; {new Date().getFullYear()} Catálogo GTA | Todos os direitos reservados.</p>
       </footer>
+
+      {/* Modal de detalhes */}
+      <AnimatePresence>{selected && <VehicleModal v={selected} onClose={() => setSelected(null)} />}</AnimatePresence>
     </div>
   )
 }
