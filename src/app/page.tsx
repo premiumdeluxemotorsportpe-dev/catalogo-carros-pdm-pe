@@ -1,50 +1,148 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { Veiculo } from '@/types/veiculo'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 
-/** Logótipos dos parceiros (ficheiros em /src/app/parceiros) */
-const partners = [
-  { src: '/parceiros/lifeinvader.webp', alt: 'Lifeinvader' },
-  { src: '/parceiros/digitalden.webp', alt: 'DigitalDen' },
+/** Tipagem para permitir escalas por-logo no carrossel */
+type PartnerLogo = { src: string; alt: string; scale?: number }
+
+const partners: PartnerLogo[] = [
+  { src: '/parceiros/lifeinvader.webp', alt: 'Lifeinvader', scale: 0.60 }, // menor
+  { src: '/parceiros/digitalden.webp', alt: 'DigitalDen', scale: 0.50 },   // ainda menor
   { src: '/parceiros/tunetown.webp', alt: 'TuneTown' },
   { src: '/parceiros/rockford.webp', alt: 'Rockford' },
   { src: '/parceiros/esperanzabuy.webp', alt: 'EsperanzaBuy' },
 ]
 
+/** Carrossel infinito de parceiros, sem cortes, velocidade constante */
 function PartnersCarousel() {
-  const loop = [...partners, ...partners]
+  const containerRef = useRef<HTMLDivElement>(null)
+  const laneARef = useRef<HTMLDivElement>(null)
+
+  // nº de cópias de logos por faixa (calculado dinamicamente) + largura para animar à velocidade certa
+  const [copies, setCopies] = useState(1)
+  const [lanePx, setLanePx] = useState(0)
+
+  // Recalcula quantas cópias são necessárias para cobrir várias larguras do ecrã e evitar “buracos”
+  useEffect(() => {
+    const recalc = () => {
+      const container = containerRef.current
+      const laneA = laneARef.current
+      if (!container || !laneA) return
+
+      const currentCopies = Math.max(1, copies)
+      const totalWidthNow = laneA.scrollWidth
+      const unitWidth = totalWidthNow / currentCopies // largura de uma cópia da sequência de logos
+      const viewportW = container.clientWidth
+
+      const needed = Math.max(2, Math.ceil((viewportW * 3) / unitWidth)) // ~3x viewport para segurança
+      setCopies(needed)
+      setLanePx(unitWidth * needed)
+    }
+
+    recalc()
+    window.addEventListener('resize', recalc)
+    return () => window.removeEventListener('resize', recalc)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Gera os itens da faixa com o nº de cópias calculado
+  const items = useMemo(
+    () => Array.from({ length: copies }).flatMap(() => partners),
+    [copies]
+  )
+
+  // Velocidade “constante”: ↓↓↓ mais lenta agora (60px/s)
+  const pxPerSec = 60
+  const duration = `${Math.max(20, Math.round(lanePx / pxPerSec))}s`
+
   return (
-    <section className="w-full bg-transparent py-6 overflow-hidden mt-[10px]">
-      <div className="relative h-[135px]">
-        <div className="marquee-x flex items-center gap-16 whitespace-nowrap absolute inset-y-0 left-0">
-          {loop.map((p, idx) => (
-            <Image
-              key={`px-${idx}`}
-              src={p.src}
-              alt={p.alt}
-              width={200}
-              height={100}
-              className="object-contain opacity-80"
-              sizes="(max-width: 640px) 40vw, (max-width: 1024px) 20vw, 10vw"
-              priority={idx < 5}
-            />
-          ))}
+    <section className="w-full bg-transparent py-4 overflow-hidden mt-[6px]">
+      <div ref={containerRef} className="relative h-16 sm:h-20 md:h-24 overflow-hidden">
+        {/* Duas faixas idênticas para transição perfeita (A e B) */}
+        <div className="absolute inset-0">
+          {/* Faixa A */}
+          <div
+            ref={laneARef}
+            className="marquee-lane marquee-lane-a flex flex-nowrap items-center gap-10 sm:gap-14 h-full will-change-transform"
+            style={{ animationDuration: duration }}
+          >
+            {items.map((p, idx) => {
+              const heightPct = `${Math.min(1, p.scale ?? 1) * 100}%`
+              return (
+                <Image
+                  key={`laneA-${idx}`}
+                  src={p.src}
+                  alt={p.alt}
+                  width={200}
+                  height={100}
+                  style={{ height: heightPct, width: 'auto' }}
+                  className="object-contain opacity-80"
+                  sizes="(max-width: 640px) 30vw, (max-width: 1024px) 15vw, 10vw"
+                  priority={idx < 5}
+                />
+              )
+            })}
+          </div>
+
+          {/* Faixa B (arranca imediatamente colada à direita da A) */}
+          <div
+            className="marquee-lane marquee-lane-b flex flex-nowrap items-center gap-10 sm:gap-14 h-full will-change-transform"
+            style={{ animationDuration: duration }}
+            aria-hidden="true"
+          >
+            {items.map((p, idx) => {
+              const heightPct = `${Math.min(1, p.scale ?? 1) * 100}%`
+              return (
+                <Image
+                  key={`laneB-${idx}`}
+                  src={p.src}
+                  alt={p.alt}
+                  width={200}
+                  height={100}
+                  style={{ height: heightPct, width: 'auto' }}
+                  className="object-contain opacity-80"
+                  sizes="(max-width: 640px) 30vw, (max-width: 1024px) 15vw, 10vw"
+                />
+              )
+            })}
+          </div>
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes marqueeXTop { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .marquee-x { animation: marqueeXTop 35s linear infinite; will-change: transform; width: 200%; }
+        .marquee-lane { width: max-content; }
+        .marquee-lane-a { animation: scrollA linear infinite; }
+        .marquee-lane-b { animation: scrollB linear infinite; }
+
+        /* A move de 0% até -100% da sua largura total */
+        @keyframes scrollA {
+          0%   { transform: translateX(0%); }
+          100% { transform: translateX(-100%); }
+        }
+        /* B acompanha a A, começando imediatamente colada à direita */
+        @keyframes scrollB {
+          0%   { transform: translateX(100%); }
+          100% { transform: translateX(0%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .marquee-lane-a,
+          .marquee-lane-b {
+            animation-duration: 0s !important;
+            animation-iteration-count: 0;
+            transform: translateX(0);
+          }
+        }
       `}</style>
     </section>
   )
 }
 
-/** Componente de imagem com fallback */
+/** Componente de imagem com fallback (sem cortes nos cards) */
 function VehicleImage({ src, alt }: { src?: string; alt: string }) {
   const [error, setError] = useState(false)
   const showFallback = !src || error
@@ -73,7 +171,7 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
   )
 }
 
-/** Modal de detalhes do veículo */
+/** Modal de detalhes do veículo (imagem completa + só a cruz para fechar) */
 function VehicleModal({
   v,
   onClose,
@@ -151,9 +249,7 @@ function VehicleModal({
             <div className="space-y-2 text-sm">
               <p>
                 Preço:{' '}
-                <strong>
-                  € {Number(v.price ?? 0).toLocaleString('pt-PT')}
-                </strong>
+                <strong>€ {Number(v.price ?? 0).toLocaleString('pt-PT')}</strong>
               </p>
               <p>Vel. de Origem: {v.speed_original ?? 0} km/h</p>
               {v.speed_tuned !== undefined && (
