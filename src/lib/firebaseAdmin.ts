@@ -1,17 +1,18 @@
 // src/lib/firebaseAdmin.ts
-import * as admin from 'firebase-admin'
+import admin from 'firebase-admin'
 
-let appInstance: admin.app.App | null = null
-
-function buildAppFromEnv(): admin.app.App {
-  // Se já existir, reutiliza
+/**
+ * Inicialização lazy do Firebase Admin.
+ * Só tenta ler credenciais quando realmente for chamado (evita falhas no build).
+ */
+export function getAdminApp(): admin.app.App {
   if (admin.apps.length) return admin.app()
 
   const projectId = process.env.FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
   let privateKey = process.env.FIREBASE_PRIVATE_KEY
 
-  // Alternativa BASE64
+  // Alternativa: chave em Base64
   if (!privateKey && process.env.FIREBASE_PRIVATE_KEY_BASE64) {
     try {
       privateKey = Buffer.from(
@@ -19,42 +20,47 @@ function buildAppFromEnv(): admin.app.App {
         'base64'
       ).toString('utf8')
     } catch {
-      // ignora
+      /* ignore */
     }
   }
 
-  // Normaliza \n
-  if (privateKey && privateKey.includes('\\n')) {
-    privateKey = privateKey.replace(/\\n/g, '\n')
-  }
-
-  // Caso: 3 envs separados
-  if (projectId && clientEmail && privateKey) {
+  // Caso: JSON completo na variável (menos comum)
+  if (privateKey && privateKey.trim().startsWith('{')) {
+    const serviceAccount = JSON.parse(privateKey) as admin.ServiceAccount
     return admin.initializeApp({
-      credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+      credential: admin.credential.cert(serviceAccount),
     })
   }
 
-  // Caso: GOOGLE_APPLICATION_CREDENTIALS (menos comum em serverless)
+  // Caso padrão: 3 variáveis separadas
+  if (projectId && clientEmail && privateKey) {
+    if (privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n')
+    return admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    })
+  }
+
+  // Último recurso: GOOGLE_APPLICATION_CREDENTIALS
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     return admin.initializeApp()
   }
 
-  // Não fazer throw no import — apenas quando for usado num handler.
-  throw new Error('FIREBASE_ADMIN_MISSING_CREDS')
+  // Não arrebentar o build com stacktrace gigante:
+  const err = new Error('FIREBASE_ADMIN_MISSING_CREDS')
+  ;(err as any).code = 'FIREBASE_ADMIN_MISSING_CREDS'
+  throw err
 }
 
-/** Obtém (ou cria) a app Admin. Lança erro **apenas** quando usada sem envs. */
-export function getAdminApp(): admin.app.App {
-  if (appInstance) return appInstance
-  appInstance = buildAppFromEnv()
-  return appInstance
+export function getAdminDb() {
+  getAdminApp()
+  return admin.firestore()
 }
 
-export function getAdminDb(): admin.firestore.Firestore {
-  return getAdminApp().firestore()
-}
-
-export function getAdminAuth(): admin.auth.Auth {
-  return getAdminApp().auth()
+export function getAdminAuth() {
+  getAdminApp()
+  return admin.auth()
 }
