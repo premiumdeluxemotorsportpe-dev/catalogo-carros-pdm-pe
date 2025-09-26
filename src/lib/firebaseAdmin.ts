@@ -1,9 +1,8 @@
-// src/lib/firebaseAdmin.ts
 import admin from 'firebase-admin'
 
 /**
  * Inicialização lazy do Firebase Admin.
- * Só tenta ler credenciais quando realmente for chamado (evita falhas no build).
+ * Só tenta ler credenciais quando for realmente chamado (evita falhas no build).
  */
 export function getAdminApp(): admin.app.App {
   if (admin.apps.length) return admin.app()
@@ -20,11 +19,11 @@ export function getAdminApp(): admin.app.App {
         'base64'
       ).toString('utf8')
     } catch {
-      /* ignore */
+      // ignore
     }
   }
 
-  // Caso: JSON completo na variável (menos comum)
+  // Caso: JSON completo na variável
   if (privateKey && privateKey.trim().startsWith('{')) {
     const serviceAccount = JSON.parse(privateKey) as admin.ServiceAccount
     return admin.initializeApp({
@@ -49,18 +48,17 @@ export function getAdminApp(): admin.app.App {
     return admin.initializeApp()
   }
 
-  // Não arrebentar o build com stacktrace gigante:
-  const err = new Error('FIREBASE_ADMIN_MISSING_CREDS')
-  ;(err as any).code = 'FIREBASE_ADMIN_MISSING_CREDS'
+  // Lança erro tipado (sem any)
+  type AdminInitError = Error & { code?: string }
+  const err: AdminInitError = new Error('FIREBASE_ADMIN_MISSING_CREDS')
+  err.code = 'FIREBASE_ADMIN_MISSING_CREDS'
   throw err
 }
 
 export function getAdminDb() {
-  getAdminApp()
-  return admin.firestore()
+  return getAdminApp().firestore()
 }
 
 export function getAdminAuth() {
-  getAdminApp()
-  return admin.auth()
+  return getAdminApp().auth()
 }
