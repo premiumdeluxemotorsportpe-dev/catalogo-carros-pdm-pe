@@ -82,7 +82,7 @@ export default function AddVeiculoForm({ onClose, onSuccess }: Props) {
 
       // limpa undefined/NaN
       const cleaned = Object.fromEntries(
-        Object.entries(vehicleData).filter(([_, v]) => {
+        Object.entries(vehicleData).filter(([, v]) => {
           if (v === undefined || v === null) return false
           if (typeof v === 'number' && Number.isNaN(v)) return false
           return true
@@ -197,10 +197,10 @@ export default function AddVeiculoForm({ onClose, onSuccess }: Props) {
                   {field === 'price'
                     ? 'Preço (€)'
                     : field === 'speed_original'
-                    ? 'Velocidade Original (km/h)'
-                    : field === 'speed_tuned'
-                    ? 'Velocidade Tunada (km/h)'
-                    : 'Capacidade da Mala (Kg)'}
+                      ? 'Velocidade Original (km/h)'
+                      : field === 'speed_tuned'
+                        ? 'Velocidade Tunada (km/h)'
+                        : 'Capacidade da Mala (Kg)'}
                 </label>
                 <input
                   id={field}

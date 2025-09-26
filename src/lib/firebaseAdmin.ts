@@ -1,16 +1,14 @@
 // src/lib/firebaseAdmin.ts
 import admin from 'firebase-admin'
 
-let app: admin.app.App
-
-function getAdminApp() {
+function getAdminApp(): admin.app.App {
   if (admin.apps.length) return admin.app()
 
   const projectId = process.env.FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
   let privateKey = process.env.FIREBASE_PRIVATE_KEY
 
-  // Alternativa: private key em Base64 (se preferires usar FIREBASE_PRIVATE_KEY_BASE64)
+  // Alternativa: private key em Base64
   if (!privateKey && process.env.FIREBASE_PRIVATE_KEY_BASE64) {
     try {
       privateKey = Buffer.from(
@@ -22,7 +20,7 @@ function getAdminApp() {
     }
   }
 
-  // Alternativa menos comum: colaste o JSON inteiro da service account numa só variável
+  // Caso: JSON inteiro da service account numa variável
   if (privateKey && privateKey.trim().startsWith('{')) {
     const serviceAccount = JSON.parse(privateKey)
     return admin.initializeApp({
@@ -32,7 +30,6 @@ function getAdminApp() {
 
   // Caso padrão: 3 variáveis separadas
   if (projectId && clientEmail && privateKey) {
-    // Se veio numa linha com \n, normaliza
     if (privateKey.includes('\\n')) {
       privateKey = privateKey.replace(/\\n/g, '\n')
     }
@@ -45,7 +42,7 @@ function getAdminApp() {
     })
   }
 
-  // Último recurso: GOOGLE_APPLICATION_CREDENTIALS (ficheiro JSON no disco)
+  // Último recurso: GOOGLE_APPLICATION_CREDENTIALS (ficheiro JSON)
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     return admin.initializeApp()
   }
@@ -55,7 +52,7 @@ function getAdminApp() {
   )
 }
 
-app = getAdminApp()
+const app = getAdminApp() // <- const, não let
 
 export const adminDb = admin.firestore()
 export const adminAuth = admin.auth()

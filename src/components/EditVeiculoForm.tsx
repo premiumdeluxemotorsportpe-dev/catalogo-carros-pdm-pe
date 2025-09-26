@@ -37,19 +37,19 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
   // Handlers tipados por campo para evitar `any` e `as never`
   const handleTextChange =
     (field: TextField) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }))
-    }
+      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        setFormData((prev) => ({ ...prev, [field]: e.target.value }))
+      }
 
   const handleNumberChange =
     (field: NumericField) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const { value } = e.target
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value === '' ? ('' as unknown as number) : Number(value),
-      }))
-    }
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { value } = e.target
+        setFormData((prev) => ({
+          ...prev,
+          [field]: value === '' ? ('' as unknown as number) : Number(value),
+        }))
+      }
 
   const handleStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, stock: e.target.checked }))
@@ -92,7 +92,7 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
       }
 
       // remove undefined, null e NaN
-      const cleanedEntries = Object.entries(updatedData).filter(([_, v]) => {
+      const cleanedEntries = Object.entries(updatedData).filter(([, v]) => {
         if (v === undefined || v === null) return false
         if (typeof v === 'number' && Number.isNaN(v)) return false
         return true
@@ -154,10 +154,10 @@ export default function EditVeiculoForm({ veiculo, onClose, onSuccess }: Props) 
                   {field === 'price'
                     ? 'Preço (€)'
                     : field === 'speed_original'
-                    ? 'Velocidade Original (km/h)'
-                    : field === 'speed_tuned'
-                    ? 'Velocidade Tunada (km/h)'
-                    : 'Capacidade da Mala (Kg)'}
+                      ? 'Velocidade Original (km/h)'
+                      : field === 'speed_tuned'
+                        ? 'Velocidade Tunada (km/h)'
+                        : 'Capacidade da Mala (Kg)'}
                 </label>
                 <input
                   id={field}
