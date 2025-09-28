@@ -249,7 +249,7 @@ function VehicleModal({
             <div className="space-y-2 text-sm">
               <p>
                 Preço:{' '}
-                <strong>€ {Number(v.price ?? 0).toLocaleString('pt-PT')}</strong>
+                <strong>$ {Number(v.price ?? 0).toLocaleString('pt-PT')}</strong>
               </p>
               <p>Vel. de Origem: {v.speed_original ?? 0} km/h</p>
               {v.speed_tuned !== undefined && (
@@ -473,8 +473,8 @@ export default function HomePage() {
                   <option value="true">Disponível</option>
                   <option value="false">Indisponível</option>
                 </select>
-                <input type="number" placeholder="Preço mínimo (€)" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
-                <input type="number" placeholder="Preço máximo (€)" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
+                <input type="number" placeholder="Preço mínimo ($)" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
+                <input type="number" placeholder="Preço máximo ($)" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
                 <input type="number" placeholder="Velocidade mínima (km/h)" value={minSpeed} onChange={(e) => setMinSpeed(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
                 <input type="number" placeholder="Velocidade máxima (km/h)" value={maxSpeed} onChange={(e) => setMaxSpeed(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
                 <input type="number" placeholder="Mala mínima (Kg)" value={minTrunk} onChange={(e) => setMinTrunk(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-sm" />
@@ -540,7 +540,7 @@ export default function HomePage() {
                   <div className="p-5 space-y-2">
                     <h3 className="text-xl font-bold text-[#002447]">{v.brand} {v.model}</h3>
                     <p className="text-sm text-gray-500">Categoria: {v.category}</p>
-                    <p className="text-sm">Preço: <strong>€ {v.price?.toLocaleString('pt-PT') ?? 0}</strong></p>
+                    <p className="text-sm">Preço: <strong>$ {v.price?.toLocaleString('pt-PT') ?? 0}</strong></p>
                     <p className="text-sm">Vel. de Origem: {v.speed_original ?? 0} km/h</p>
                     {v.speed_tuned !== undefined && <p className="text-sm">Vel. Full Tuned: {v.speed_tuned} km/h</p>}
                     {v.trunk_capacity !== undefined && <p className="text-sm">Capacidade da mala: {v.trunk_capacity} Kg</p>}

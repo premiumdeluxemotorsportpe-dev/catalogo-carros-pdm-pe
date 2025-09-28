@@ -309,7 +309,7 @@ export default function AdminPage() {
                             <td className="p-3 border-b">{v.brand}</td>
                             <td className="p-3 border-b">{v.model}</td>
                             <td className="p-3 border-b">{v.category}</td>
-                            <td className="p-3 border-b">€ {Number(v.price ?? 0).toLocaleString('pt-PT')}</td>
+                            <td className="p-3 border-b">$ {Number(v.price ?? 0).toLocaleString('pt-PT')}</td>
                             <td className="p-3 border-b">{v.speed_original ?? '—'} km/h</td>
                             <td className="p-3 border-b">{v.speed_tuned ?? '—'} km/h</td>
                             <td className="p-3 border-b">

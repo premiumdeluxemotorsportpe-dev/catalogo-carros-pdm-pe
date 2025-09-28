@@ -194,7 +194,7 @@ export default function AddVeiculoForm({ onClose, onSuccess }: Props) {
               <div key={field} className="flex flex-col">
                 <label htmlFor={field} className="text-sm font-semibold mb-1 text-gray-700">
                   {field === 'price'
-                    ? 'Preço (€)'
+                    ? 'Preço ($)'
                     : field === 'speed_original'
                     ? 'Velocidade Original (km/h)'
                     : field === 'speed_tuned'
