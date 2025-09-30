@@ -6,6 +6,9 @@ import type { Veiculo } from '@/types/veiculo'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 
+/** Tamanho do lote devolvido pela API (mantém igual ao back) */
+const PAGE_SIZE = 24
+
 /** Tipagem para permitir escalas por-logo no carrossel */
 type PartnerLogo = { src: string; alt: string; scale?: number }
 
@@ -22,11 +25,9 @@ function PartnersCarousel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const laneARef = useRef<HTMLDivElement>(null)
 
-  // nº de cópias de logos por faixa (calculado dinamicamente) + largura para animar à velocidade certa
   const [copies, setCopies] = useState(1)
   const [lanePx, setLanePx] = useState(0)
 
-  // Recalcula quantas cópias são necessárias para cobrir várias larguras do ecrã e evitar “buracos”
   useEffect(() => {
     const recalc = () => {
       const container = containerRef.current
@@ -35,10 +36,10 @@ function PartnersCarousel() {
 
       const currentCopies = Math.max(1, copies)
       const totalWidthNow = laneA.scrollWidth
-      const unitWidth = totalWidthNow / currentCopies // largura de uma cópia da sequência de logos
+      const unitWidth = totalWidthNow / currentCopies
       const viewportW = container.clientWidth
 
-      const needed = Math.max(2, Math.ceil((viewportW * 3) / unitWidth)) // ~3x viewport para segurança
+      const needed = Math.max(2, Math.ceil((viewportW * 3) / unitWidth))
       setCopies(needed)
       setLanePx(unitWidth * needed)
     }
@@ -49,22 +50,18 @@ function PartnersCarousel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Gera os itens da faixa com o nº de cópias calculado
   const items = useMemo(
     () => Array.from({ length: copies }).flatMap(() => partners),
     [copies]
   )
 
-  // Velocidade “constante”: ↓↓↓ mais lenta agora (60px/s)
   const pxPerSec = 60
   const duration = `${Math.max(20, Math.round(lanePx / pxPerSec))}s`
 
   return (
     <section className="w-full bg-transparent py-4 overflow-hidden mt-[6px]">
       <div ref={containerRef} className="relative h-16 sm:h-20 md:h-24 overflow-hidden">
-        {/* Duas faixas idênticas para transição perfeita (A e B) */}
         <div className="absolute inset-0">
-          {/* Faixa A */}
           <div
             ref={laneARef}
             className="marquee-lane marquee-lane-a flex flex-nowrap items-center gap-10 sm:gap-14 h-full will-change-transform"
@@ -88,7 +85,6 @@ function PartnersCarousel() {
             })}
           </div>
 
-          {/* Faixa B (arranca imediatamente colada à direita da A) */}
           <div
             className="marquee-lane marquee-lane-b flex flex-nowrap items-center gap-10 sm:gap-14 h-full will-change-transform"
             style={{ animationDuration: duration }}
@@ -118,12 +114,10 @@ function PartnersCarousel() {
         .marquee-lane-a { animation: scrollA linear infinite; }
         .marquee-lane-b { animation: scrollB linear infinite; }
 
-        /* A move de 0% até -100% da sua largura total */
         @keyframes scrollA {
           0%   { transform: translateX(0%); }
           100% { transform: translateX(-100%); }
         }
-        /* B acompanha a A, começando imediatamente colada à direita */
         @keyframes scrollB {
           0%   { transform: translateX(100%); }
           100% { transform: translateX(0%); }
@@ -143,7 +137,7 @@ function PartnersCarousel() {
 }
 
 /** Componente de imagem com fallback (sem cortes nos cards) */
-function VehicleImage({ src, alt }: { src?: string; alt: string }) {
+function VehicleImage({ src, alt, priority = false }: { src?: string; alt: string; priority?: boolean }) {
   const [error, setError] = useState(false)
   const showFallback = !src || error
 
@@ -154,6 +148,7 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
           src="/sem-imagem.webp"
           alt={`${alt} (sem imagem)`}
           fill
+          priority={priority}
           className="object-contain"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 22vw"
         />
@@ -162,6 +157,7 @@ function VehicleImage({ src, alt }: { src?: string; alt: string }) {
           src={src}
           alt={alt}
           fill
+          priority={priority}
           className="object-contain"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 22vw"
           onError={() => setError(true)}
@@ -179,14 +175,12 @@ function VehicleModal({
   v: Veiculo
   onClose: () => void
 }) {
-  // Fechar por ESC
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Bloquear scroll de fundo
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -212,7 +206,6 @@ function VehicleModal({
           transition={{ type: 'spring', stiffness: 260, damping: 22 }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Botão fechar (apenas a cruz) */}
           <button
             onClick={onClose}
             aria-label="Fechar"
@@ -221,7 +214,6 @@ function VehicleModal({
             <span className="text-xl leading-none">×</span>
           </button>
 
-          {/* Imagem grande SEM cortes (object-contain) */}
           <div className="relative w-full h-[420px] bg-gray-100">
             <Image
               src={
@@ -237,7 +229,6 @@ function VehicleModal({
             />
           </div>
 
-          {/* Conteúdo */}
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
               <h3 className="text-2xl font-bold text-[#002447]">
@@ -320,7 +311,7 @@ export default function HomePage() {
         stock,
         minPrice,
         maxPrice,
-        pageSize: 24,
+        pageSize: PAGE_SIZE,
         cursor: null,
       }
       const res = await fetch('/api/vehicles', {
@@ -352,7 +343,7 @@ export default function HomePage() {
       const res = await fetch('/api/vehicles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ search, category: categoria, stock, minPrice, maxPrice, pageSize: 24, cursor }),
+        body: JSON.stringify({ search, category: categoria, stock, minPrice, maxPrice, pageSize: PAGE_SIZE, cursor }),
       })
       if (!res.ok) {
         const t = await res.text().catch(() => '')
@@ -526,32 +517,41 @@ export default function HomePage() {
             <p className="text-center text-gray-500">Nenhum veículo encontrado.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              {displayedVeiculos.map((v, i) => (
-                <motion.div
-                  key={v.id}
-                  className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition duration-300 overflow-hidden border border-gray-100 cursor-pointer"
-                  whileHover={{ scale: 1.03 }}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  onClick={() => setSelected(v)}
-                >
-                  <VehicleImage src={v.image_url} alt={v.model} />
-                  <div className="p-5 space-y-2">
-                    <h3 className="text-xl font-bold text-[#002447]">{v.brand} {v.model}</h3>
-                    <p className="text-sm text-gray-500">Categoria: {v.category}</p>
-                    <p className="text-sm">Preço: <strong>$ {v.price?.toLocaleString('pt-PT') ?? 0}</strong></p>
-                    <p className="text-sm">Vel. de Origem: {v.speed_original ?? 0} km/h</p>
-                    {v.speed_tuned !== undefined && <p className="text-sm">Vel. Full Tuned: {v.speed_tuned} km/h</p>}
-                    {v.trunk_capacity !== undefined && <p className="text-sm">Capacidade da mala: {v.trunk_capacity} Kg</p>}
-                    <p className="text-sm mt-1">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${v.stock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {v.stock ? 'Disponível' : 'Indisponível'}
-                      </span>
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
+              {displayedVeiculos.map((v, i) => {
+                // atraso mínimo e CONSTANTE por lote
+                const batchIndex = i % PAGE_SIZE
+                const delay = Math.min(batchIndex * 0.01, 0.12) // 0–120ms
+
+                return (
+                  <motion.div
+                    key={v.id}
+                    className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition duration-300 overflow-hidden border border-gray-100 cursor-pointer"
+                    initial={{ opacity: 0, y: 24 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: 'tween', duration: 0.2, ease: 'easeOut', delay }}
+                    onClick={() => setSelected(v)}
+                  >
+                    <VehicleImage
+                      src={v.image_url}
+                      alt={v.model}
+                      priority={batchIndex < 4} // só os 4 primeiros do lote com prioridade
+                    />
+                    <div className="p-5 space-y-2">
+                      <h3 className="text-xl font-bold text-[#002447]">{v.brand} {v.model}</h3>
+                      <p className="text-sm text-gray-500">Categoria: {v.category}</p>
+                      <p className="text-sm">Preço: <strong>$ {v.price?.toLocaleString('pt-PT') ?? 0}</strong></p>
+                      <p className="text-sm">Vel. de Origem: {v.speed_original ?? 0} km/h</p>
+                      {v.speed_tuned !== undefined && <p className="text-sm">Vel. Full Tuned: {v.speed_tuned} km/h</p>}
+                      {v.trunk_capacity !== undefined && <p className="text-sm">Capacidade da mala: {v.trunk_capacity} Kg</p>}
+                      <p className="text-sm mt-1">
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${v.stock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {v.stock ? 'Disponível' : 'Indisponível'}
+                        </span>
+                      </p>
+                    </div>
+                  </motion.div>
+                )
+              })}
             </div>
           )}
 

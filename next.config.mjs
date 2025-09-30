@@ -31,6 +31,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'static.wikia.nocookie.net' },
       { protocol: 'https', hostname: 'img.gta5-mods.com' },
       { protocol: 'https', hostname: '*.googleusercontent.com' },
+      { protocol: 'https', hostname: 'i.etsystatic.com' },
+      { protocol: 'https', hostname: 'gom-modeling.com' },
+      { protocol: 'https', hostname: 'static1.srcdn.com' },
+      { protocol: 'https', hostname: 'www.gta5rides.com' }
     ],
   },
 }
